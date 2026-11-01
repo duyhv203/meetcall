@@ -18,7 +18,11 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
 
   // Cookie Parser
-  app.use(cookieParser());
+  const parseCookie =
+    typeof cookieParser === 'function'
+      ? cookieParser
+      : (cookieParser as unknown as { default: typeof cookieParser }).default;
+  app.use(parseCookie());
 
   // CORS Configuration
   const webOrigin = configService.get<string>('WEB_ORIGIN', 'http://localhost:5173');
