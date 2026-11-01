@@ -12,6 +12,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RedisService } from '../redis/redis.service.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type { ChatMessage, MessagesResponse } from '@meetcall/shared';
 
 @Injectable()
@@ -25,6 +26,7 @@ export class ChatService {
     private readonly redisService: RedisService,
     @Inject(forwardRef(() => RealtimeGateway))
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async getMessages(
@@ -200,6 +202,23 @@ export class ChatService {
     // 5. Emit realtime event to both participants
     this.realtimeGateway.emitToUser(senderId, 'chat:message', messageDto);
     this.realtimeGateway.emitToUser(partnerId, 'chat:message', messageDto);
+
+    // Send push notification to partner
+    void this.prisma.profile
+      .findUnique({
+        where: { userId: senderId },
+        select: { displayName: true },
+      })
+      .then((p) => {
+        const senderName = p?.displayName || 'Tin nhắn mới';
+        return this.notificationsService.notifyNewMessage(
+          partnerId,
+          senderName,
+          trimmed,
+          matchId,
+        );
+      })
+      .catch((err) => this.logger.error(`Error sending push notification: ${err}`));
 
     return messageDto;
   }

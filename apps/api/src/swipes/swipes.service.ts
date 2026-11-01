@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RedisService } from '../redis/redis.service.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type { SwipeRequest, SwipeResponse } from '@meetcall/shared';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class SwipesService {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async swipe(swiperId: string, dto: SwipeRequest): Promise<SwipeResponse> {
@@ -169,6 +171,13 @@ export class SwipesService {
           avatar: swiperAvatar,
         },
       });
+
+      // Send push notification to target user
+      void this.notificationsService.notifyNewMatch(
+        dto.targetUserId,
+        swiperUser?.profile?.displayName || 'Một người dùng',
+        match.id,
+      );
 
       return {
         match: true,

@@ -6,3 +6,4 @@ export * from './chat.dto.js';
 export * from './call.dto.js';
 export * from './random.dto.js';
 export * from './safety.dto.js';
+export * from './settings.dto.js';

@@ -14,6 +14,9 @@ import { ChatPage } from './features/chat/ChatPage.js';
 import { CallPage } from './features/calls/CallPage.js';
 import { RandomPage } from './features/random/RandomPage.js';
 import { BlockedUsersPage } from './features/settings/BlockedUsersPage.js';
+import { SettingsPage } from './features/settings/SettingsPage.js';
+import { TermsPage } from './features/legal/TermsPage.js';
+import { PrivacyPage } from './features/legal/PrivacyPage.js';
 import { AdminDashboardPage } from './features/admin/AdminDashboardPage.js';
 import { IncomingCallModal } from './components/IncomingCallModal.js';
 import { ProtectedRoute } from './components/ProtectedRoute.js';
@@ -47,10 +50,15 @@ export function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
 
+        {/* Public Legal Routes */}
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+
         {/* Protected App Routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/profile" element={<ProfileSettingsPage />} />
           <Route path="/discover" element={<DiscoverPage />} />
           <Route path="/matches" element={<MatchesPage />} />

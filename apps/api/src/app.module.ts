@@ -17,6 +17,7 @@ import { CallsModule } from './calls/calls.module.js';
 import { RandomModule } from './random/random.module.js';
 import { SafetyModule } from './safety/safety.module.js';
 import { AdminModule } from './admin/admin.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { AdminModule } from './admin/admin.module.js';
     RandomModule,
     SafetyModule,
     AdminModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

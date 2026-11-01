@@ -12,6 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeGateway } from '../realtime/realtime.gateway.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type {
   IceServersResponse,
   InitiateCallResponse,
@@ -28,6 +29,7 @@ export class CallsService {
     private readonly configService: ConfigService,
     @Inject(forwardRef(() => RealtimeGateway))
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   getIceServers(userId: string): IceServersResponse {
@@ -146,6 +148,11 @@ export class CallsService {
           });
           this.realtimeGateway.emitToUser(callerId, 'call:missed', { callId: call.id });
           this.realtimeGateway.emitToUser(calleeId, 'call:missed', { callId: call.id });
+          void this.notificationsService.notifyMissedCall(
+            calleeId,
+            callerUser?.profile?.displayName || 'Một người dùng',
+            call.id,
+          );
         }
       } catch (err) {
         this.logger.error(`Error in 30s call timeout: ${(err as Error).message}`);

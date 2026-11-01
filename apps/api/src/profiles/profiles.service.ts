@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
+  DeleteAccountResponse,
+  ExportDataResponse,
   MeResponse,
   PhotoData,
   ProfileData,
@@ -216,5 +218,135 @@ export class ProfilesService {
     }
 
     return { success: true };
+  }
+
+  async exportData(userId: string): Promise<ExportDataResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        profile: true,
+        preferences: true,
+        photos: {
+          orderBy: { position: 'asc' },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'Người dùng không tồn tại.',
+      });
+    }
+
+    const [matchesCount, messagesSentCount, callsCount, blocksCount] = await Promise.all([
+      this.prisma.match.count({
+        where: {
+          OR: [{ userA: userId }, { userB: userId }],
+          unmatchedAt: null,
+        },
+      }),
+      this.prisma.message.count({
+        where: { senderId: userId },
+      }),
+      this.prisma.call.count({
+        where: {
+          OR: [{ callerId: userId }, { calleeId: userId }],
+        },
+      }),
+      this.prisma.block.count({
+        where: { blockerId: userId },
+      }),
+    ]);
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        ageVerified: user.ageVerified,
+        createdAt: user.createdAt.toISOString(),
+      },
+      profile: user.profile
+        ? {
+            displayName: user.profile.displayName,
+            birthdate: user.profile.birthdate.toISOString().split('T')[0] || '',
+            gender: user.profile.gender,
+            bio: user.profile.bio,
+            interests: user.profile.interests,
+            city: user.profile.city,
+          }
+        : null,
+      preferences: user.preferences
+        ? {
+            minAge: user.preferences.minAge,
+            maxAge: user.preferences.maxAge,
+            maxDistanceKm: user.preferences.maxDistanceKm,
+            genderFilter: user.preferences.genderFilter,
+          }
+        : null,
+      photos: user.photos.map((p) => ({
+        id: p.id,
+        url: p.url,
+        position: p.position,
+        moderationStatus: p.moderationStatus,
+        createdAt: p.createdAt.toISOString(),
+      })),
+      matchesCount,
+      messagesSentCount,
+      callsCount,
+      blocksCount,
+      exportedAt: new Date().toISOString(),
+    };
+  }
+
+  async deleteAccount(userId: string): Promise<DeleteAccountResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException({
+        code: 'USER_NOT_FOUND',
+        message: 'Người dùng không tồn tại.',
+      });
+    }
+
+    // 1. Soft-delete user status = 'deleted'
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { status: 'deleted' },
+      });
+
+      // 2. Revoke all refresh tokens
+      await tx.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+
+      // 3. Delete device tokens
+      await tx.deviceToken.deleteMany({
+        where: { userId },
+      });
+
+      // 4. Unmatch active matches
+      await tx.match.updateMany({
+        where: {
+          OR: [{ userA: userId }, { userB: userId }],
+          unmatchedAt: null,
+        },
+        data: { unmatchedAt: new Date() },
+      });
+    });
+
+    const scheduledDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    return {
+      success: true,
+      message: 'Tài khoản của bạn đã được đánh dấu xoá và sẽ bị xoá vĩnh viễn sau 7 ngày.',
+      scheduledPermanentDeleteAt: scheduledDate.toISOString(),
+    };
   }
 }

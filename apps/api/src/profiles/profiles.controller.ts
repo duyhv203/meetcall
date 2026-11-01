@@ -13,17 +13,22 @@ import {
 } from '@nestjs/common';
 import { ProfilesService } from './profiles.service.js';
 import { PhotosService } from '../photos/photos.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { AuthGuard } from '../auth/guards/auth.guard.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type {
   AuthUser,
   ConfirmPhotoRequest,
+  DeleteAccountResponse,
+  ExportDataResponse,
   GetUploadUrlRequest,
   GetUploadUrlResponse,
   MeResponse,
   PhotoData,
   ProfileData,
+  RegisterDeviceRequest,
   ReorderPhotosRequest,
+  UnregisterDeviceRequest,
   UpdateLocationRequest,
   UpdatePreferencesRequest,
   UpdateProfileRequest,
@@ -35,6 +40,7 @@ export class ProfilesController {
   constructor(
     private readonly profilesService: ProfilesService,
     private readonly photosService: PhotosService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   @Get()
@@ -97,5 +103,34 @@ export class ProfilesController {
     @Param('id') id: string,
   ): Promise<{ success: boolean }> {
     return this.photosService.deletePhoto(user.id, id);
+  }
+
+  @Post('devices')
+  @HttpCode(HttpStatus.OK)
+  async registerDevice(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: RegisterDeviceRequest,
+  ): Promise<{ success: boolean }> {
+    return this.notificationsService.registerDevice(user.id, dto);
+  }
+
+  @Delete('devices')
+  @HttpCode(HttpStatus.OK)
+  async unregisterDevice(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UnregisterDeviceRequest,
+  ): Promise<{ success: boolean }> {
+    return this.notificationsService.unregisterDevice(user.id, dto.fcmToken);
+  }
+
+  @Get('export')
+  async exportData(@CurrentUser() user: AuthUser): Promise<ExportDataResponse> {
+    return this.profilesService.exportData(user.id);
+  }
+
+  @Delete()
+  @HttpCode(HttpStatus.OK)
+  async deleteAccount(@CurrentUser() user: AuthUser): Promise<DeleteAccountResponse> {
+    return this.profilesService.deleteAccount(user.id);
   }
 }

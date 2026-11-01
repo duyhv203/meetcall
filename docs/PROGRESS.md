@@ -440,9 +440,72 @@ pnpm build
 ```
 
 ### 4. Bước kế tiếp
-- **Bước 9: Thông báo đẩy, cài đặt tài khoản, xuất dữ liệu GDPR & Xoá tài khoản (Notifications & Settings)**:
-  - Đăng ký Web Push subscription (`POST /api/v1/me/devices`, bảng `device_tokens`).
-  - Gửi thông báo đẩy khi có match mới, tin nhắn mới, hoặc cuộc gọi nhỡ.
-  - Soft-delete tài khoản (`DELETE /api/v1/me`), huỷ session, đổi trạng thái `deleted`, lên lịch hard-delete sau 7 ngày.
-  - Xuất dữ liệu cá nhân theo GDPR (`GET /api/v1/me/export`).
-  - Frontend: Service Worker Web Push (`public/sw.js`), trang `/settings` (thông báo, quyền riêng tư, xuất dữ liệu, xoá tài khoản), trang `/terms` và `/privacy`.
+- **Bước 9: Thông báo đẩy, cài đặt tài khoản, xuất dữ liệu GDPR & Xoá tài khoản (Đã hoàn thành)**
+
+---
+
+## Bước 9: Thông báo đẩy, cài đặt tài khoản, xuất dữ liệu GDPR & Xoá tài khoản (Đã hoàn thành)
+
+### 1. Đã làm
+- **Shared Types & DTOs**:
+  - `packages/shared/src/settings.dto.ts`: `RegisterDeviceRequest`, `UnregisterDeviceRequest`, `ExportDataResponse`, `DeleteAccountRequest`, `DeleteAccountResponse`.
+- **Backend Notifications & Account Management Module (`apps/api`)**:
+  - `NotificationsModule` & `NotificationsService`:
+    - `POST /api/v1/me/devices`: Đăng ký device token Web Push / Mobile vào bảng `device_tokens`.
+    - `DELETE /api/v1/me/devices`: Huỷ đăng ký device token của người dùng.
+    - `sendPushNotification`: Gửi thông báo đẩy tới toàn bộ thiết bị của người dùng.
+    - Tích hợp thông báo tự động:
+      - `notifyNewMatch`: Tự động gửi thông báo đẩy khi có match mới từ `SwipesService`.
+      - `notifyNewMessage`: Tự động gửi thông báo đẩy khi có tin nhắn mới từ `ChatService`.
+      - `notifyMissedCall`: Tự động gửi thông báo đẩy khi có cuộc gọi nhỡ từ `CallsService`.
+  - `ProfilesService` & `ProfilesController`:
+    - `GET /api/v1/me/export`: Xuất dữ liệu cá nhân theo chuẩn GDPR (Data Portability) gồm toàn bộ hồ sơ cá nhân, hình ảnh, cài đặt sở thích, số lượng match, số tin nhắn đã gửi, số cuộc gọi, và lịch sử chặn dưới định dạng JSON.
+    - `DELETE /api/v1/me`: Xoá tài khoản (Soft delete):
+      - Cập nhật `status = 'deleted'`.
+      - Lập tức thu hồi toàn bộ refresh tokens trong bảng `refresh_tokens`.
+      - Xoá sạch toàn bộ device tokens trong bảng `device_tokens`.
+      - Tự động unmatch toàn bộ các tương hợp đang hoạt động.
+      - Lên lịch xoá vĩnh viễn (hard delete) sau 7 ngày ân hạn.
+      - Chặn đăng nhập và chặn truy cập API đối với các tài khoản ở trạng thái `deleted` (`401 UNAUTHORIZED: Tài khoản đã bị xoá`).
+- **Frontend Web (`apps/web`)**:
+  - `public/sw.js`: Service worker Web Push xử lý sự kiện `push` hiển thị thông báo với biểu tượng, rung, và sự kiện `notificationclick` tự động mở hoặc chuyển hướng tab trình duyệt đến đúng phòng chat/match.
+  - `src/features/settings/SettingsPage.tsx`:
+    - Quản lý thông báo đẩy: Bật/tắt Web Push, xin quyền `Notification.requestPermission()`.
+    - Quản lý quyền riêng tư & an toàn: Liên kết tới danh sách chặn, điều khoản dịch vụ, chính sách bảo mật.
+    - Quyền riêng tư GDPR: Nút "Tải xuống dữ liệu của tôi (.json)" tải trực tiếp file `meetcall-export-YYYY-MM-DD.json`.
+    - Vùng nguy hiểm: Nút "Xoá tài khoản vĩnh viễn" kèm modal xác nhận cảnh báo ân hạn 7 ngày, tự động đăng xuất và chuyển về trang login.
+  - `src/features/legal/TermsPage.tsx`: Điều khoản dịch vụ đầy đủ, nhấn mạnh cam kết 18+, tiêu chuẩn cộng đồng, chống quấy rối, và chính sách quản trị.
+  - `src/features/legal/PrivacyPage.tsx`: Chính sách bảo mật chi tiết, giải thích rõ nguyên tắc làm tròn khoảng cách 5km (bảo vệ toạ độ GPS thực tế), cơ chế loại bỏ siêu dữ liệu EXIF của ảnh, bảo mật WebRTC mã hoá đầu cuối (DTLS-SRTP), và quyền trích xuất dữ liệu GDPR.
+  - Định tuyến tại `apps/web/src/App.tsx`: bổ sung các route `/settings`, `/terms`, `/privacy`.
+- **Kiểm thử Supertest bắt buộc (`apps/api/test/notifications-account.e2e-spec.ts`)**:
+  - Đã pass 100% (7/7 tests):
+    1. Đăng ký device token Web Push thành công
+    2. Dịch vụ NotificationsService gửi push thành công đến thiết bị đã đăng ký
+    3. Huỷ đăng ký device token thành công
+    4. Trích xuất dữ liệu cá nhân theo GDPR đầy đủ
+    5. Soft-delete tài khoản, thu hồi refresh token và lên lịch xoá vĩnh viễn sau 7 ngày
+    6. Tài khoản đã xoá không thể truy cập lại API (401 UNAUTHORIZED)
+    7. Tài khoản đã xoá không thể đăng nhập lại
+- **Tổng số tests e2e toàn hệ thống**: 71 tests (9 suites) đều pass tuyệt đối!
+
+### 2. Quyết định kỹ thuật quan trọng
+- **Tuân thủ Quyền riêng tư GDPR (Data Portability & Erasure)**: Cung cấp đầy đủ quyền trích xuất dữ liệu thô dưới định dạng JSON và quyền được lãng quên (Right to be Forgotten) với cơ chế soft delete 7 ngày ân hạn trước khi hard delete.
+- **Dọn dẹp Token an toàn khi xoá tài khoản**: Ngay khi user bấm xoá tài khoản, toàn bộ Refresh Tokens và Device Tokens bị vô hiệu hoá ngay lập tức, ngăn ngừa mọi truy cập trái phép hoặc tiếp tục nhận thông báo sau khi đã huỷ tài khoản.
+
+### 3. Lệnh để chạy và kiểm tra lại bước này
+```bash
+# 1. Chạy e2e tests cho Thông báo & Cài đặt tài khoản
+pnpm --filter @meetcall/api test:e2e test/notifications-account.e2e-spec.ts
+
+# 2. Chạy toàn bộ e2e test suite (71 tests)
+pnpm --filter @meetcall/api test:e2e
+
+# 3. Build toàn bộ monorepo
+pnpm build
+```
+
+### 4. Bước kế tiếp
+- **Bước 10: Kiểm thử toàn diện và gia cố (Testing & Hardening)**:
+  - Rà soát lỗ hổng: `pnpm audit`, OWASP Top 10 checklist, bảo vệ AuthGuard trên toàn bộ endpoint.
+  - Playwright E2E tests kiểm tra các luồng người dùng chính: Đăng ký & Onboarding, Vuốt & Match, Chat realtime, Video call 1-1, Video call ngẫu nhiên.
+  - Script kiểm thử tải k6 (`scripts/k6/load-test.js`).
