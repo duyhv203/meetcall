@@ -8,6 +8,8 @@ import { ResetPasswordPage } from './features/auth/ResetPasswordPage.js';
 import { HomePage } from './features/home/HomePage.js';
 import { OnboardingPage } from './features/onboarding/OnboardingPage.js';
 import { ProfileSettingsPage } from './features/settings/ProfileSettingsPage.js';
+import { DiscoverPage } from './features/discover/DiscoverPage.js';
+import { MatchesPage } from './features/matches/MatchesPage.js';
 import { ProtectedRoute } from './components/ProtectedRoute.js';
 
 export function App() {
@@ -42,6 +44,8 @@ export function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/settings/profile" element={<ProfileSettingsPage />} />
+          <Route path="/discover" element={<DiscoverPage />} />
+          <Route path="/matches" element={<MatchesPage />} />
         </Route>
 
         {/* Fallback */}

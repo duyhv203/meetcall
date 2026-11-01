@@ -8,7 +8,9 @@ import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ProfilesModule } from './profiles/profiles.module.js';
 import { PhotosModule } from './photos/photos.module.js';
+import { RealtimeModule } from './realtime/realtime.module.js';
 import { DiscoveryModule } from './discovery/discovery.module.js';
+import { SwipesModule } from './swipes/swipes.module.js';
 import { MatchesModule } from './matches/matches.module.js';
 import { ChatModule } from './chat/chat.module.js';
 import { CallsModule } from './calls/calls.module.js';
@@ -46,7 +48,9 @@ import { AdminModule } from './admin/admin.module.js';
     AuthModule,
     ProfilesModule,
     PhotosModule,
+    RealtimeModule,
     DiscoveryModule,
+    SwipesModule,
     MatchesModule,
     ChatModule,
     CallsModule,

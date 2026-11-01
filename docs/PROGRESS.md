@@ -157,5 +157,67 @@ pnpm --filter @meetcall/api test:e2e
 pnpm build
 ```
 
+---
+
+## Bước 4: Khám phá, vuốt thẻ và tạo match (Đã hoàn thành)
+
+### 1. Đã làm
+- **Shared Types & DTOs**:
+  - `packages/shared/src/discovery.dto.ts`: `DiscoverCandidate`, `SwipeAction`, `SwipeRequest`, `SwipeResponse`, `MatchItem`, `MatchPartner`.
+- **Backend Realtime Gateway (`apps/api`)**:
+  - `RealtimeGateway` & `RealtimeModule` (@nestjs/websockets + socket.io):
+    - Xác thực JWT Bearer trong handshake.
+    - Đưa từng user vào room riêng biệt `user:{userId}`.
+    - Helper `emitToUser(userId, event, payload)` phát thông báo match tức thời.
+- **Backend Khám phá (`DiscoveryService` & `DiscoveryController`)**:
+  - `GET /api/v1/discover`:
+    - Truy vấn PostGIS không gian `ST_DWithin` theo bán kính `maxDistanceKm`.
+    - Tính khoảng cách bảo mật, làm tròn theo bội số 5 km: `GREATEST(5, ROUND(ST_Distance(...) / 5000.0) * 5)`.
+    - Lọc theo độ tuổi (`minAge` đến `maxAge`) và giới tính (`genderFilter`).
+    - Loại trừ chính mình, loại trừ người đã từng quẹt, loại trừ người đã bị chặn cả 2 chiều (block).
+    - Chỉ hiển thị người có trạng thái `active` và có ít nhất 1 ảnh đã kiểm duyệt (`moderationStatus = 'approved'`).
+- **Backend Quẹt thẻ (`SwipesService` & `SwipesController`)**:
+  - `POST /api/v1/swipes`:
+    - Chặn tự quẹt chính mình (`400 CANNOT_SWIPE_SELF`).
+    - Giới hạn Like (Rate Limit): Tối đa 100 lượt thích trong 12 giờ qua Redis key `rate:likes:{userId}`, vi phạm trả `429 LIKE_LIMIT`. Thao tác 'pass' không bị giới hạn.
+    - Transaction nguyên tử: ghi nhận bảng `swipes`, kiểm tra like tương hỗ (`reciprocalLike`).
+    - Nếu hai bên cùng thích nhau:
+      - Tạo bản ghi trong bảng `matches` đảm bảo ràng buộc `user_a < user_b` với `ON CONFLICT DO NOTHING`.
+      - Phát sự kiện WebSocket `match:new` tới room của cả 2 user.
+      - Trả về `{ match: true, matchId, matchedUser }`.
+- **Backend Quản lý Tương hợp (`MatchesService` & `MatchesController`)**:
+  - `GET /api/v1/matches`: Trả danh sách tương hợp kèm thông tin đối phương (tên, tuổi, avatar, vị trí, tin nhắn mới nhất).
+  - `DELETE /api/v1/matches/:id`: Huỷ tương hợp an toàn (đánh dấu `unmatched_at`), chỉ thành viên tham gia mới có quyền huỷ (`403 FORBIDDEN` nếu không thuộc match).
+- **Frontend Web (`apps/web`)**:
+  - `src/lib/socket.ts`: Client Socket.IO tự động xác thực token và duy trì kết nối.
+  - `src/stores/discoverStore.ts` & `src/stores/matchStore.ts`: Zustand stores quản lý ứng viên, lượt quẹt lạc quan (optimistic swipe), và danh sách match.
+  - `src/features/discover/DiscoverPage.tsx`:
+    - Thẻ quẹt vuốt ảnh đa chiều (ảnh chính/phụ, nút like/pass, hiệu ứng vuốt thẻ).
+    - Hỗ trợ phím tắt: mũi tên trái (Pass), mũi tên phải (Like), mũi tên lên/xuống (chuyển ảnh).
+    - Popup "It's a Match!" rực rỡ khi tạo match thành công với nút "Nhắn tin ngay" và "Tiếp tục quẹt thẻ".
+    - Màn hình trống khi hết hồ sơ kèm nút tìm kiếm lại và mở rộng bán kính.
+  - `src/features/matches/MatchesPage.tsx`:
+    - Danh sách tương hợp dạng lưới responsive, hiển thị avatar, tuổi, thành phố, bio, tin nhắn mới nhất.
+    - Nút "Nhắn tin" và nút "Huỷ tương hợp" kèm hộp thoại xác nhận cảnh báo.
+- **Kiểm thử Supertest bắt buộc (`apps/api/test/discovery-swipes.e2e-spec.ts`)**:
+  - Đã pass 100% (8/8 tests): trả ứng viên làm tròn 5km, quẹt pass không tạo match, loại trừ người đã quẹt khỏi discover, quẹt like 1 chiều, quẹt like tương hỗ tạo match đúng chuẩn DB `user_a < user_b`, rate limit 100 likes/12h (429 LIKE_LIMIT), lấy danh sách matches, huỷ match thành công.
+
+### 2. Quyết định kỹ thuật quan trọng
+- **Bảo mật tuyệt đối vị trí**: Sử dụng hàm PostGIS `ST_Distance` kết hợp `ROUND(... / 5000.0) * 5` đảm bảo khoảng cách luôn hiển thị là ~5 km, ~10 km, ~15 km... bảo vệ quyền riêng tư người dùng.
+- **Ràng buộc duy nhất & Chống Race Condition**: Khớp nối match bằng cặp `user_a < user_b` trong transaction đảm bảo không bao giờ sinh ra match kép giữa cùng một cặp người dùng dù cả hai cùng quẹt thích cùng một thời điểm.
+- **Rate Limit Redis**: Sử dụng `INCR` và `EXPIRE` của Redis cho giới hạn 100 like/12h vừa nhẹ vừa hiệu năng cao.
+
+### 3. Lệnh để chạy và kiểm tra lại bước này
+```bash
+# 1. Chạy e2e tests cho Khám phá, Vuốt thẻ & Tương hợp
+pnpm --filter @meetcall/api test:e2e test/discovery-swipes.e2e-spec.ts
+
+# 2. Chạy toàn bộ e2e test suite (27 tests)
+pnpm --filter @meetcall/api test:e2e
+
+# 3. Build toàn bộ monorepo
+pnpm build
+```
+
 ### 4. Bước kế tiếp
-- **Bước 4: Khám phá, vuốt thẻ và tạo match**: Query tìm kiếm PostGIS `ST_DWithin`, làm tròn khoảng cách 5 km, ghi nhận lượt quẹt (swipe), transaction kiểm tra like chéo và tạo match, thông báo realtime qua Socket.IO.
+- **Bước 5: Chat Realtime**: Socket.IO chat gateway (`chat:send`, `chat:typing`, `chat:read`), Redis presence theo dõi online (TTL 60s), phân trang cursor `GET /api/v1/matches/:id/messages`, giao diện tin nhắn cuộn mượt mà với chỉ báo đã xem.

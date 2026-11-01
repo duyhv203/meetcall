@@ -26,8 +26,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = res;
       } else if (typeof res === 'object' && res !== null) {
         const resObj = res as Record<string, unknown>;
+        const innerError = (resObj.error && typeof resObj.error === 'object') ? (resObj.error as Record<string, unknown>) : null;
+
         if (typeof resObj.code === 'string') {
           code = resObj.code;
+        } else if (innerError && typeof innerError.code === 'string') {
+          code = innerError.code;
         } else {
           code = this.getErrorCodeFromStatus(status);
         }
@@ -36,6 +40,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
           message = resObj.message.join('; ');
         } else if (typeof resObj.message === 'string') {
           message = resObj.message;
+        } else if (innerError && typeof innerError.message === 'string') {
+          message = innerError.message;
         }
       }
     } else if (exception instanceof Error) {
