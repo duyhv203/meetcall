@@ -1,0 +1,302 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserStatus {
+  active
+  suspended
+  deleted
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+enum PhotoModerationStatus {
+  pending
+  approved
+  rejected
+}
+
+enum SwipeDirection {
+  like
+  pass
+}
+
+enum CallKind {
+  match
+  random
+}
+
+enum CallEndReason {
+  completed
+  declined
+  missed
+  cancelled
+  failed
+  skipped
+}
+
+enum ReportReason {
+  nudity
+  harassment
+  minor
+  scam
+  spam
+  other
+}
+
+enum ReportStatus {
+  open
+  reviewed
+  actioned
+}
+
+enum AdminActionType {
+  dismiss
+  warn
+  suspend
+  ban
+}
+
+model User {
+  id                String      @id @default(uuid()) @db.Uuid
+  email             String      @unique @db.VarChar(255)
+  passwordHash      String      @map("password_hash") @db.VarChar(255)
+  role              UserRole    @default(user)
+  status            UserStatus  @default(active)
+  ageVerified       Boolean     @default(false) @map("age_verified")
+  randomBannedUntil DateTime?   @map("random_banned_until") @db.Timestamptz
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  profile           Profile?
+  photos            Photo[]
+  preferences       Preferences?
+  swipesSent        Swipe[]           @relation("SwipesSent")
+  swipesReceived    Swipe[]           @relation("SwipesReceived")
+  matchesAsA        Match[]           @relation("MatchesUserA")
+  matchesAsB        Match[]           @relation("MatchesUserB")
+  messages          Message[]
+  callsAsCaller     Call[]            @relation("CallsCaller")
+  callsAsCallee     Call[]            @relation("CallsCallee")
+  friendVotes       CallFriendVote[]
+  blocksInitiated   Block[]           @relation("BlocksInitiated")
+  blocksReceived    Block[]           @relation("BlocksReceived")
+  reportsFiled      Report[]          @relation("ReportsFiled")
+  reportsAgainst    Report[]          @relation("ReportsAgainst")
+  refreshTokens     RefreshToken[]
+  deviceTokens      DeviceToken[]
+  adminActionsTaken AdminAction[]     @relation("AdminActionsTaken")
+  adminActionsOnMe  AdminAction[]     @relation("AdminActionsOnMe")
+
+  @@map("users")
+}
+
+model Profile {
+  userId        String                                  @id @map("user_id") @db.Uuid
+  displayName   String                                  @map("display_name") @db.VarChar(50)
+  birthdate     DateTime                                @db.Date
+  gender        String                                  @db.VarChar(20)
+  bio           String?                                 @db.VarChar(300)
+  location      Unsupported("geography(Point,4326)")?   @map("location")
+  city          String?                                 @db.VarChar(100)
+  lastActiveAt  DateTime                                @default(now()) @map("last_active_at") @db.Timestamptz
+  createdAt     DateTime                                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime                                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user          User                                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Photo {
+  id               String                @id @default(uuid()) @db.Uuid
+  userId           String                @map("user_id") @db.Uuid
+  url              String                @db.VarChar(1024)
+  position         Int                   @default(0) @db.SmallInt
+  moderationStatus PhotoModerationStatus @default(pending) @map("moderation_status")
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("photos")
+}
+
+model Preferences {
+  userId        String   @id @map("user_id") @db.Uuid
+  genderFilter  String[] @default([]) @map("gender_filter")
+  minAge        Int      @default(18) @map("min_age") @db.SmallInt
+  maxAge        Int      @default(100) @map("max_age") @db.SmallInt
+  maxDistanceKm Int      @default(50) @map("max_distance_km") @db.SmallInt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("preferences")
+}
+
+model Swipe {
+  id        String         @id @default(uuid()) @db.Uuid
+  fromUser  String         @map("from_user") @db.Uuid
+  toUser    String         @map("to_user") @db.Uuid
+  direction SwipeDirection
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  sender    User           @relation("SwipesSent", fields: [fromUser], references: [id], onDelete: Cascade)
+  target    User           @relation("SwipesReceived", fields: [toUser], references: [id], onDelete: Cascade)
+
+  @@unique([fromUser, toUser])
+  @@index([toUser, fromUser])
+  @@map("swipes")
+}
+
+model Match {
+  id          String    @id @default(uuid()) @db.Uuid
+  userA       String    @map("user_a") @db.Uuid
+  userB       String    @map("user_b") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  unmatchedAt DateTime? @map("unmatched_at") @db.Timestamptz
+
+  firstUser   User      @relation("MatchesUserA", fields: [userA], references: [id], onDelete: Cascade)
+  secondUser  User      @relation("MatchesUserB", fields: [userB], references: [id], onDelete: Cascade)
+  messages    Message[]
+
+  @@unique([userA, userB])
+  @@map("matches")
+}
+
+model Message {
+  id        String    @id @default(uuid()) @db.Uuid
+  matchId   String    @map("match_id") @db.Uuid
+  senderId  String    @map("sender_id") @db.Uuid
+  body      String    @db.VarChar(2000)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  readAt    DateTime? @map("read_at") @db.Timestamptz
+
+  match     Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  sender    User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([matchId, createdAt(sort: Desc)])
+  @@map("messages")
+}
+
+model Call {
+  id          String           @id @default(uuid()) @db.Uuid
+  kind        CallKind
+  callerId    String           @map("caller_id") @db.Uuid
+  calleeId    String           @map("callee_id") @db.Uuid
+  startedAt   DateTime?        @map("started_at") @db.Timestamptz
+  endedAt     DateTime?        @map("ended_at") @db.Timestamptz
+  endReason   CallEndReason?   @map("end_reason")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  caller      User             @relation("CallsCaller", fields: [callerId], references: [id], onDelete: Cascade)
+  callee      User             @relation("CallsCallee", fields: [calleeId], references: [id], onDelete: Cascade)
+  friendVotes CallFriendVote[]
+  reports     Report[]
+
+  @@index([callerId])
+  @@index([calleeId])
+  @@map("calls")
+}
+
+model CallFriendVote {
+  id          String   @id @default(uuid()) @db.Uuid
+  callId      String   @map("call_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  wantsFriend Boolean  @map("wants_friend")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  call        Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([callId, userId])
+  @@map("call_friend_votes")
+}
+
+model Block {
+  id        String   @id @default(uuid()) @db.Uuid
+  blockerId String   @map("blocker_id") @db.Uuid
+  blockedId String   @map("blocked_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  blocker   User     @relation("BlocksInitiated", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("BlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@map("blocks")
+}
+
+model Report {
+  id         String          @id @default(uuid()) @db.Uuid
+  reporterId String          @map("reporter_id") @db.Uuid
+  targetId   String          @map("target_id") @db.Uuid
+  callId     String?         @map("call_id") @db.Uuid
+  reason     ReportReason
+  status     ReportStatus    @default(open)
+  details    String?         @db.VarChar(1000)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  reporter   User            @relation("ReportsFiled", fields: [reporterId], references: [id], onDelete: Cascade)
+  target     User            @relation("ReportsAgainst", fields: [targetId], references: [id], onDelete: Cascade)
+  call       Call?           @relation(fields: [callId], references: [id], onDelete: SetNull)
+  actions    AdminAction[]
+
+  @@index([reporterId])
+  @@index([targetId])
+  @@map("reports")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model DeviceToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  fcmToken  String   @unique @map("fcm_token") @db.VarChar(512)
+  platform  String   @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("device_tokens")
+}
+
+model AdminAction {
+  id           String          @id @default(uuid()) @db.Uuid
+  adminId      String          @map("admin_id") @db.Uuid
+  targetUserId String?         @map("target_user_id") @db.Uuid
+  reportId     String?         @map("report_id") @db.Uuid
+  action       AdminActionType
+  note         String?         @db.VarChar(1000)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  admin        User            @relation("AdminActionsTaken", fields: [adminId], references: [id], onDelete: Cascade)
+  targetUser   User?           @relation("AdminActionsOnMe", fields: [targetUserId], references: [id], onDelete: SetNull)
+  report       Report?         @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  @@index([adminId])
+  @@index([targetUserId])
+  @@map("admin_actions")
+}
