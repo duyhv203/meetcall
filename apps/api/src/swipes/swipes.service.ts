@@ -115,6 +115,13 @@ export class SwipesService {
       },
     });
 
+    if (swiper?.role === 'admin') {
+      throw new BadRequestException({
+        code: 'ADMIN_CANNOT_SWIPE',
+        message: 'Tài khoản Quản trị viên (Admin) chỉ dùng để quản trị hệ thống, không tham gia quẹt thẻ hẹn hò.',
+      });
+    }
+
     const isProfileComplete = Boolean(
       swiper?.profile?.displayName &&
       swiper?.profile?.city,

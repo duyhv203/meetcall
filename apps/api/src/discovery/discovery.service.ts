@@ -59,6 +59,7 @@ export class DiscoveryService {
       LEFT JOIN profiles me_p ON me_p.user_id = ${userId}::uuid
       WHERE p.user_id != ${userId}::uuid
         AND u.status = 'active'
+        AND u.role = 'user'
         AND p.user_id NOT IN (
           SELECT to_user FROM swipes WHERE from_user = ${userId}::uuid
         )

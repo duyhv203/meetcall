@@ -59,6 +59,13 @@ export class RandomService {
       });
     }
 
+    if (user.role === 'admin') {
+      throw new ForbiddenException({
+        code: 'ADMIN_NOT_ALLOWED',
+        message: 'Tài khoản Quản trị viên chỉ dùng để quản trị hệ thống, không tham gia gọi hẹn hò.',
+      });
+    }
+
     if (!user.ageVerified) {
       throw new ForbiddenException({
         code: 'AGE_NOT_VERIFIED',

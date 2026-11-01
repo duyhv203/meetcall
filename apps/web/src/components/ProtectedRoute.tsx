@@ -4,17 +4,17 @@ import { useAuthStore } from '../stores/authStore.js';
 import { useProfileStore } from '../stores/profileStore.js';
 
 export function ProtectedRoute() {
-  const { isAuthenticated, isInitialized } = useAuthStore();
+  const { user, isAuthenticated, isInitialized } = useAuthStore();
   const { me, isLoading: profileLoading, fetchMe } = useProfileStore();
   const location = useLocation();
 
   useEffect(() => {
-    if (isAuthenticated && !me && !profileLoading) {
+    if (isAuthenticated && user?.role === 'user' && !me && !profileLoading) {
       void fetchMe();
     }
-  }, [isAuthenticated, me, profileLoading, fetchMe]);
+  }, [isAuthenticated, user, me, profileLoading, fetchMe]);
 
-  if (!isInitialized || (isAuthenticated && !me && profileLoading)) {
+  if (!isInitialized || (isAuthenticated && user?.role === 'user' && !me && profileLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
         <div className="flex flex-col items-center gap-3">
@@ -27,6 +27,11 @@ export function ProtectedRoute() {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  // Admin is strictly for management, redirect immediately to /admin
+  if (user?.role === 'admin') {
+    return <Navigate to="/admin" replace />;
   }
 
   const isOnboardingPath = location.pathname === '/onboarding';

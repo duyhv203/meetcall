@@ -15,12 +15,16 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type {
+  AdminActionLogItem,
   AdminReportItem,
+  AdminStatsResponse,
   AuthUser,
   ModeratePhotoRequest,
   ReportStatusType,
   ResolveReportRequest,
   SuspendUserRequest,
+  UpdateUserRoleRequest,
+  VerifyUserAgeRequest,
 } from '@meetcall/shared';
 import type { PhotoModerationStatus } from '@prisma/client';
 
@@ -29,6 +33,60 @@ import type { PhotoModerationStatus } from '@prisma/client';
 @Roles('admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
+
+  @Get('stats')
+  async getStats(): Promise<AdminStatsResponse> {
+    return this.adminService.getStats();
+  }
+
+  @Get('users')
+  async getUsers(
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('role') role?: string,
+    @Query('ageVerified') ageVerified?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getUsers(
+      search,
+      status,
+      role,
+      ageVerified,
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+    );
+  }
+
+  @Post('users/:id/suspend')
+  @HttpCode(HttpStatus.OK)
+  async suspendUser(
+    @CurrentUser() admin: AuthUser,
+    @Param('id') userId: string,
+    @Body() body: SuspendUserRequest,
+  ) {
+    return this.adminService.suspendUser(admin.id, userId, body);
+  }
+
+  @Post('users/:id/role')
+  @HttpCode(HttpStatus.OK)
+  async updateUserRole(
+    @CurrentUser() admin: AuthUser,
+    @Param('id') userId: string,
+    @Body() body: UpdateUserRoleRequest,
+  ) {
+    return this.adminService.updateUserRole(admin.id, userId, body);
+  }
+
+  @Post('users/:id/verify-age')
+  @HttpCode(HttpStatus.OK)
+  async verifyUserAge(
+    @CurrentUser() admin: AuthUser,
+    @Param('id') userId: string,
+    @Body() body: VerifyUserAgeRequest,
+  ) {
+    return this.adminService.verifyUserAge(admin.id, userId, body);
+  }
 
   @Get('reports')
   async getReports(
@@ -53,16 +111,6 @@ export class AdminController {
     return this.adminService.resolveReport(admin.id, reportId, body);
   }
 
-  @Post('users/:id/suspend')
-  @HttpCode(HttpStatus.OK)
-  async suspendUser(
-    @CurrentUser() admin: AuthUser,
-    @Param('id') userId: string,
-    @Body() body: SuspendUserRequest,
-  ) {
-    return this.adminService.suspendUser(admin.id, userId, body);
-  }
-
   @Get('photos')
   async getPhotos(
     @Query('status') status?: PhotoModerationStatus,
@@ -84,5 +132,16 @@ export class AdminController {
     @Body() body: ModeratePhotoRequest,
   ) {
     return this.adminService.moderatePhoto(admin.id, photoId, body);
+  }
+
+  @Get('logs')
+  async getLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminActionLogItem[]> {
+    return this.adminService.getLogs(
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 50,
+    );
   }
 }
