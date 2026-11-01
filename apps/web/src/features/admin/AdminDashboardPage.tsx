@@ -24,7 +24,7 @@ import type {
   AdminUserItem,
 } from '@meetcall/shared';
 import { useAuthStore } from '../../stores/authStore.js';
-import { resolvePhotoUrl } from '../../lib/api.js';
+import { api, resolvePhotoUrl } from '../../lib/api.js';
 
 interface AdminPhoto {
   id: string;
@@ -84,11 +84,8 @@ export const AdminDashboardPage = () => {
   const fetchStats = async () => {
     setLoadingStats(true);
     try {
-      const res = await fetch('/api/v1/admin/stats');
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
-      }
+      const data = await api<AdminStatsResponse>('/admin/stats');
+      setStats(data);
     } catch {
       // ignore
     } finally {
@@ -107,12 +104,14 @@ export const AdminDashboardPage = () => {
         role: userRoleFilter,
         ageVerified: userAgeFilter,
       });
-      const res = await fetch(`/api/v1/admin/users?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(data.users || []);
-        setUserTotalPages(data.totalPages || 1);
-      }
+      const data = await api<{
+        users: AdminUserItem[];
+        total: number;
+        page: number;
+        totalPages: number;
+      }>(`/admin/users?${params.toString()}`);
+      setUsers(data.users || []);
+      setUserTotalPages(data.totalPages || 1);
     } catch {
       // ignore
     } finally {
@@ -123,15 +122,12 @@ export const AdminDashboardPage = () => {
   const fetchReports = async () => {
     setLoadingReports(true);
     try {
-      const url =
+      const path =
         reportFilter === 'all'
-          ? '/api/v1/admin/reports'
-          : `/api/v1/admin/reports?status=${reportFilter}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        setReports(data || []);
-      }
+          ? '/admin/reports'
+          : `/admin/reports?status=${reportFilter}`;
+      const data = await api<AdminReportItem[]>(path);
+      setReports(data || []);
     } catch {
       // ignore
     } finally {
@@ -142,11 +138,8 @@ export const AdminDashboardPage = () => {
   const fetchPhotos = async () => {
     setLoadingPhotos(true);
     try {
-      const res = await fetch(`/api/v1/admin/photos?status=${photoFilter}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPhotos(data || []);
-      }
+      const data = await api<AdminPhoto[]>(`/admin/photos?status=${photoFilter}`);
+      setPhotos(data || []);
     } catch {
       // ignore
     } finally {
@@ -157,11 +150,8 @@ export const AdminDashboardPage = () => {
   const fetchLogs = async () => {
     setLoadingLogs(true);
     try {
-      const res = await fetch('/api/v1/admin/logs?limit=50');
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data || []);
-      }
+      const data = await api<AdminActionLogItem[]>('/admin/logs?limit=50');
+      setLogs(data || []);
     } catch {
       // ignore
     } finally {
@@ -210,25 +200,21 @@ export const AdminDashboardPage = () => {
 
     setUserActionLoading(user.id);
     try {
-      const res = await fetch(`/api/v1/admin/users/${user.id}/suspend`, {
+      await api(`/admin/users/${user.id}/suspend`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           suspend: isSuspending,
           note: isSuspending ? 'Admin đình chỉ từ bảng người dùng' : 'Admin mở khoá tài khoản',
         }),
       });
-      if (res.ok) {
-        await fetchUsers();
-        if (selectedUserDetail?.id === user.id) {
-          setSelectedUserDetail((prev) =>
-            prev ? { ...prev, status: isSuspending ? 'suspended' : 'active' } : null,
-          );
-        }
-      } else {
-        const err = await res.json();
-        alert(err?.error?.message || err?.message || 'Thao tác thất bại');
+      await fetchUsers();
+      if (selectedUserDetail?.id === user.id) {
+        setSelectedUserDetail((prev) =>
+          prev ? { ...prev, status: isSuspending ? 'suspended' : 'active' } : null,
+        );
       }
+    } catch (err: any) {
+      alert(err?.error?.message || err?.message || 'Thao tác thất bại');
     } finally {
       setUserActionLoading(null);
     }
@@ -238,20 +224,16 @@ export const AdminDashboardPage = () => {
     const nextVal = !user.ageVerified;
     setUserActionLoading(user.id);
     try {
-      const res = await fetch(`/api/v1/admin/users/${user.id}/verify-age`, {
+      await api(`/admin/users/${user.id}/verify-age`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ageVerified: nextVal }),
       });
-      if (res.ok) {
-        await fetchUsers();
-        if (selectedUserDetail?.id === user.id) {
-          setSelectedUserDetail((prev) => (prev ? { ...prev, ageVerified: nextVal } : null));
-        }
-      } else {
-        const err = await res.json();
-        alert(err?.error?.message || err?.message || 'Cập nhật thất bại');
+      await fetchUsers();
+      if (selectedUserDetail?.id === user.id) {
+        setSelectedUserDetail((prev) => (prev ? { ...prev, ageVerified: nextVal } : null));
       }
+    } catch (err: any) {
+      alert(err?.error?.message || err?.message || 'Cập nhật thất bại');
     } finally {
       setUserActionLoading(null);
     }
@@ -267,20 +249,16 @@ export const AdminDashboardPage = () => {
 
     setUserActionLoading(user.id);
     try {
-      const res = await fetch(`/api/v1/admin/users/${user.id}/role`, {
+      await api(`/admin/users/${user.id}/role`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: nextRole }),
       });
-      if (res.ok) {
-        await fetchUsers();
-        if (selectedUserDetail?.id === user.id) {
-          setSelectedUserDetail((prev) => (prev ? { ...prev, role: nextRole } : null));
-        }
-      } else {
-        const err = await res.json();
-        alert(err?.error?.message || err?.message || 'Cập nhật quyền thất bại');
+      await fetchUsers();
+      if (selectedUserDetail?.id === user.id) {
+        setSelectedUserDetail((prev) => (prev ? { ...prev, role: nextRole } : null));
       }
+    } catch (err: any) {
+      alert(err?.error?.message || err?.message || 'Cập nhật quyền thất bại');
     } finally {
       setUserActionLoading(null);
     }
@@ -292,17 +270,13 @@ export const AdminDashboardPage = () => {
   ) => {
     setReportActionLoading(reportId);
     try {
-      const res = await fetch(`/api/v1/admin/reports/${reportId}/resolve`, {
+      await api(`/admin/reports/${reportId}/resolve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, note: `Admin chọn hành động ${action}` }),
       });
-      if (res.ok) {
-        await fetchReports();
-      } else {
-        const err = await res.json();
-        alert(err?.error?.message || 'Xử lý báo cáo thất bại');
-      }
+      await fetchReports();
+    } catch (err: any) {
+      alert(err?.error?.message || err?.message || 'Xử lý báo cáo thất bại');
     } finally {
       setReportActionLoading(null);
     }
@@ -311,14 +285,13 @@ export const AdminDashboardPage = () => {
   const handleModeratePhoto = async (photoId: string, status: 'approved' | 'rejected') => {
     setPhotoActionLoading(photoId);
     try {
-      const res = await fetch(`/api/v1/admin/photos/${photoId}/moderate`, {
+      await api(`/admin/photos/${photoId}/moderate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       });
-      if (res.ok) {
-        setPhotos((prev) => prev.filter((p) => p.id !== photoId));
-      }
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    } catch (err: any) {
+      alert(err?.error?.message || err?.message || 'Kiểm duyệt ảnh thất bại');
     } finally {
       setPhotoActionLoading(null);
     }
