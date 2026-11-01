@@ -74,6 +74,7 @@ export class AuthService {
         data: {
           email: dto.email,
           passwordHash,
+          ageVerified: true,
           profile: {
             create: {
               displayName,

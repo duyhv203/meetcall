@@ -46,7 +46,7 @@ export class RandomService {
       include: {
         profile: true,
         photos: {
-          where: { moderationStatus: 'approved' },
+          where: { moderationStatus: { not: 'rejected' } },
           take: 1,
         },
       },
