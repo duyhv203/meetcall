@@ -219,5 +219,61 @@ pnpm --filter @meetcall/api test:e2e
 pnpm build
 ```
 
+---
+
+## Bước 5: Chat Realtime (Đã hoàn thành)
+
+### 1. Đã làm
+- **Shared Types & DTOs**:
+  - `packages/shared/src/chat.dto.ts`: `ChatMessage`, `MessagesResponse`, `SendMessageRequest`, `ChatTypingPayload`, `UserPresenceResponse`.
+- **Backend Chat & Presence Module (`apps/api`)**:
+  - `ChatService`:
+    - Phân trang cursor theo thời gian tạo tin nhắn `createdAt`: `GET /api/v1/matches/:id/messages?cursor=&limit=30`.
+    - Kiểm tra bảo mật chặt chẽ: Chỉ thành viên trong match (`userA` hoặc `userB`) và chưa unmatch mới có quyền xem / gửi tin nhắn (`403 FORBIDDEN`).
+    - Gửi tin nhắn (`sendMessage` qua REST hoặc WebSocket):
+      - Kiểm tra nội dung rỗng / quá 2000 ký tự (`400 EMPTY_MESSAGE`).
+      - Chống link spam / lừa đảo: Tối đa 2 link trong 1 tin nhắn (`400 TOO_MANY_LINKS`).
+      - Rate limiting Redis: Tối đa 30 tin nhắn / phút cho mỗi tài khoản, vượt quá trả `429 RATE_LIMIT_EXCEEDED`.
+      - Cập nhật `profiles.last_active_at` cho người gửi.
+      - Phát sự kiện WebSocket `chat:message` tới room của cả 2 user.
+    - Đánh dấu đã xem (`markAsRead`):
+      - Cập nhật `read_at = NOW()` cho toàn bộ tin nhắn chưa đọc từ đối phương trong match.
+      - Phát sự kiện WebSocket `chat:read` để đối phương cập nhật trạng thái đã xem tức thời.
+    - Trạng thái Presence (Online / Offline):
+      - Ghi nhận `presence:{userId}` trong Redis với TTL 60 giây khi kết nối hoặc khi nhận `presence:heartbeat`.
+      - Endpoint `GET /api/v1/users/:id/presence` trả về trạng thái online.
+  - `RealtimeGateway`:
+    - Đón nhận sự kiện `@SubscribeMessage('chat:send')`, `@SubscribeMessage('chat:typing')`, `@SubscribeMessage('chat:read')`, `@SubscribeMessage('presence:heartbeat')`.
+- **Frontend Web (`apps/web`)**:
+  - `src/stores/chatStore.ts`: Zustand store quản lý tin nhắn, phân trang cursor vô tận (infinite scroll), chỉ báo typing và sự kiện realtime.
+  - `src/features/chat/ChatPage.tsx`:
+    - Header: Avatar đối phương, tên, tuổi, chấm xanh trực tuyến (online presence), nút bắt đầu cuộc gọi video.
+    - Khung chat cuộn mượt:
+      - Tin nhắn của mình (bên phải, màu rose/gradient), tin nhắn đối phương (bên trái, màu slate).
+      - Trạng thái gửi / đã xem (icon tick xám / tick kép rose).
+      - Chỉ báo typing animation (3 chấm nảy) khi đối phương đang soạn tin.
+      - Nút tải tin nhắn cũ hơn khi cuộn lên đầu.
+    - Khung nhập tin nhắn:
+      - Ô nhập text, hỗ trợ Enter để gửi, tự động phát sự kiện typing và debounce tự tắt.
+- **Kiểm thử Supertest bắt buộc (`apps/api/test/chat.e2e-spec.ts`)**:
+  - Đã pass 100% (8/8 tests): gửi tin nhắn thành công, chặn người ngoài match (403), từ chối tin nhắn rỗng, chặn spam > 2 link, rate limit 30 msg/min, phân trang cursor 2 chiều, đánh dấu đã xem `readAt`, kiểm tra presence online / offline.
+
+### 2. Quyết định kỹ thuật quan trọng
+- **Bảo mật & Phòng chống Gian lận (Anti-Phishing / Anti-Spam)**: Thực thi bộ lọc regex link trực tiếp ở server giới hạn tối đa 2 link/tin nhắn, kết hợp rate limiting 30 tin nhắn/phút trong Redis để ngăn bot quấy rối người dùng.
+- **Phân trang Cursor**: Không sử dụng `offset` vì dễ bị lệch khi có tin nhắn mới gửi đến; sử dụng `createdAt` cursor pagination đảm bảo cuộn xem lịch sử tin nhắn luôn ổn định và hiệu năng cao.
+- **Presence TTL Redis**: Sử dụng Redis key với TTL ngắn 60 giây và heartbeat chu kỳ giúp phát hiện người dùng ngắt kết nối chính xác mà không làm nặng cơ sở dữ liệu chính.
+
+### 3. Lệnh để chạy và kiểm tra lại bước này
+```bash
+# 1. Chạy e2e tests cho Chat & Realtime
+pnpm --filter @meetcall/api test:e2e test/chat.e2e-spec.ts
+
+# 2. Chạy toàn bộ e2e test suite (35 tests)
+pnpm --filter @meetcall/api test:e2e
+
+# 3. Build toàn bộ monorepo
+pnpm build
+```
+
 ### 4. Bước kế tiếp
-- **Bước 5: Chat Realtime**: Socket.IO chat gateway (`chat:send`, `chat:typing`, `chat:read`), Redis presence theo dõi online (TTL 60s), phân trang cursor `GET /api/v1/matches/:id/messages`, giao diện tin nhắn cuộn mượt mà với chỉ báo đã xem.
+- **Bước 6: Gọi video giữa 2 người đã match & cấu hình TURN**: Tích hợp WebRTC Peer-to-Peer, Coturn server STUN/TURN, sinh credentials HMAC-SHA1 ngắn hạn, signaling handshake qua Socket.IO (`call:invite`, `call:accept`, `call:decline`, `call:end`, `rtc:signal`), timeout 30s tự động chuyển sang missed call, giao diện gọi video toàn màn hình.

@@ -3,11 +3,16 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { forwardRef, Inject, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '../redis/redis.service.js';
+import { ChatService } from '../chat/chat.service.js';
 
 interface JwtPayload {
   sub: string;
@@ -30,6 +35,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly redisService: RedisService,
+    @Inject(forwardRef(() => ChatService))
+    private readonly chatService: ChatService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -56,6 +64,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       // Join individual room for private notifications
       await client.join(`user:${payload.sub}`);
+
+      // Set online presence with 60s TTL
+      await this.redisService.getClient().set(`presence:${payload.sub}`, '1', 'EX', 60);
+
       this.logger.debug(`User ${payload.sub} connected on socket ${client.id}`);
     } catch (err) {
       this.logger.debug(`Socket authentication failed: ${(err as Error).message}`);
@@ -67,6 +79,54 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (client.data.userId) {
       this.logger.debug(`User ${client.data.userId} disconnected socket ${client.id}`);
     }
+  }
+
+  @SubscribeMessage('presence:heartbeat')
+  async handlePresenceHeartbeat(@ConnectedSocket() client: Socket): Promise<{ status: string }> {
+    const userId = client.data.userId;
+    if (userId) {
+      await this.redisService.getClient().set(`presence:${userId}`, '1', 'EX', 60);
+    }
+    return { status: 'ok' };
+  }
+
+  @SubscribeMessage('chat:send')
+  async handleChatSend(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { matchId: string; content: string },
+  ): Promise<{ success: boolean; error?: string }> {
+    const userId = client.data.userId;
+    if (!userId) {
+      return { success: false, error: 'UNAUTHORIZED' };
+    }
+    try {
+      await this.chatService.sendMessage(userId, data.matchId, data.content);
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Send message failed';
+      return { success: false, error: message };
+    }
+  }
+
+  @SubscribeMessage('chat:typing')
+  async handleChatTyping(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { matchId: string; isTyping: boolean },
+  ): Promise<void> {
+    const userId = client.data.userId;
+    if (!userId) return;
+    await this.chatService.sendTyping(userId, data.matchId, data.isTyping);
+  }
+
+  @SubscribeMessage('chat:read')
+  async handleChatRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { matchId: string },
+  ): Promise<{ success: boolean }> {
+    const userId = client.data.userId;
+    if (!userId) return { success: false };
+    const res = await this.chatService.markAsRead(userId, data.matchId);
+    return { success: res.success };
   }
 
   emitToUser(userId: string, event: string, data: unknown): void {
