@@ -5,6 +5,8 @@
 [build.environment]
   NODE_VERSION = "20"
   PNPM_FLAGS = "--no-frozen-lockfile"
+  NPM_FLAGS = "--no-frozen-lockfile"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT = "0"
 
 [[redirects]]
   from = "/*"
