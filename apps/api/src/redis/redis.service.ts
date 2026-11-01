@@ -18,9 +18,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const port = this.configService.get<number>('REDIS_PORT', 6379);
     const password = this.configService.get<string>('REDIS_PASSWORD');
 
-    // If host is explicitly 'memory' or 'in-memory', use memory store directly
-    if (host === 'memory' || host === 'in-memory') {
-      this.logger.log('📦 Using in-memory Redis store');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
+    const hasExternalRedis = Boolean(redisUrl || (!isLocalhost && host !== 'memory' && host !== 'in-memory'));
+
+    // In production without external Redis, or if memory store is requested:
+    if (host === 'memory' || host === 'in-memory' || (isProduction && !hasExternalRedis)) {
+      this.logger.log('📦 Using built-in In-Memory Redis store (no external Redis required).');
       this.isUsingFallback = true;
       this.client = this.inMemoryFallback;
       return;
@@ -36,9 +40,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         maxRetriesPerRequest: 1,
         retryStrategy: (times: number) => {
           if (times > 2) {
-            this.logger.warn('⚠️ Redis unreachable after retries. Operating in-memory mode.');
+            this.logger.warn('⚠️ Redis connection failed. Operating in in-memory mode.');
             this.isUsingFallback = true;
-            return null; // stop reconnecting
+            return null;
           }
           return 1000;
         },
@@ -48,7 +52,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
       realRedis.on('error', (err) => {
         if (!this.isUsingFallback) {
-          this.logger.warn(`⚠️ Redis connection failed (${err.message}). Falling back to in-memory store.`);
+          this.logger.warn(`⚠️ Redis error: ${err.message}. Operating in in-memory mode.`);
           this.isUsingFallback = true;
         }
       });
@@ -71,7 +75,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     if (this.isUsingFallback) {
       return this.inMemoryFallback as unknown as Redis;
     }
-    // Return a proxy that falls back to in-memory if real Redis operation rejects
     const target = this.client as unknown as Record<string, any>;
     const fallback = this.inMemoryFallback as unknown as Record<string, any>;
     const self = this;
@@ -79,7 +82,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return new Proxy(target, {
       get(obj, prop: string) {
         if (self.isUsingFallback || typeof obj[prop] !== 'function') {
-          return (fallback[prop] ?? obj[prop]);
+          return fallback[prop] ?? obj[prop];
         }
         return async (...args: any[]) => {
           try {
