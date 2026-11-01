@@ -115,9 +115,14 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       }),
     });
 
-    // 2. Direct upload file binary to uploadUrl (normalize localhost:3000 to proxy path)
-    const normalizedUploadUrl = uploadUrl.replace(/^http:\/\/localhost:3000/, '');
-    const uploadRes = await fetch(normalizedUploadUrl, {
+    // 2. Direct upload file binary to uploadUrl (normalize localhost / relative paths to active API URL)
+    let targetUploadUrl = uploadUrl;
+    if (targetUploadUrl.includes('localhost:') || targetUploadUrl.startsWith('/')) {
+      const pathWithQuery = targetUploadUrl.replace(/^http:\/\/[^/]+/, '');
+      const base = ((import.meta.env.VITE_API_URL as string) || '').replace(/\/$/, '');
+      targetUploadUrl = base ? `${base}${pathWithQuery}` : pathWithQuery;
+    }
+    const uploadRes = await fetch(targetUploadUrl, {
       method: 'PUT',
       headers: {
         'Content-Type': file.type || 'image/jpeg',

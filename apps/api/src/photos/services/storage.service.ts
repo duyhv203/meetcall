@@ -71,11 +71,17 @@ export class StorageService implements OnModuleInit {
       return { uploadUrl, publicUrl };
     }
 
-    // Local dev mode: generate local PUT endpoint URL
+    // Local / Cloud disk mode: generate endpoint URL
     const port = this.configService.get<number>('PORT', 3000);
     const apiPrefix = this.configService.get<string>('API_PREFIX', '/api/v1');
-    const uploadUrl = `http://localhost:${port}${apiPrefix}/storage/upload?key=${encodeURIComponent(key)}`;
-    const publicUrl = `http://localhost:${port}${apiPrefix}/storage/file?key=${encodeURIComponent(key)}`;
+    const externalApiUrl =
+      this.configService.get<string>('API_URL') ||
+      this.configService.get<string>('RENDER_EXTERNAL_URL');
+    const baseUrl = externalApiUrl
+      ? externalApiUrl.replace(/\/$/, '')
+      : `http://localhost:${port}`;
+    const uploadUrl = `${baseUrl}${apiPrefix}/storage/upload?key=${encodeURIComponent(key)}`;
+    const publicUrl = `${baseUrl}${apiPrefix}/storage/file?key=${encodeURIComponent(key)}`;
 
     return { uploadUrl, publicUrl };
   }
@@ -119,7 +125,13 @@ export class StorageService implements OnModuleInit {
 
     const port = this.configService.get<number>('PORT', 3000);
     const apiPrefix = this.configService.get<string>('API_PREFIX', '/api/v1');
-    return `http://localhost:${port}${apiPrefix}/storage/file/${encodeURIComponent(key)}`;
+    const externalApiUrl =
+      this.configService.get<string>('API_URL') ||
+      this.configService.get<string>('RENDER_EXTERNAL_URL');
+    const baseUrl = externalApiUrl
+      ? externalApiUrl.replace(/\/$/, '')
+      : `http://localhost:${port}`;
+    return `${baseUrl}${apiPrefix}/storage/file/${encodeURIComponent(key)}`;
   }
 
   async deleteFile(key: string): Promise<void> {

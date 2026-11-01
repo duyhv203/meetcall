@@ -145,8 +145,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export function resolvePhotoUrl(url?: string | null): string {
   if (!url) return '';
   const base = getBaseApiUrl().replace(/\/$/, '');
-  if (url.startsWith('http://localhost:3000')) {
-    const rel = url.replace('http://localhost:3000', '');
+  if (/^http:\/\/localhost:\d+/.test(url)) {
+    const rel = url.replace(/^http:\/\/localhost:\d+/, '');
     return base ? `${base}${rel}` : rel;
   }
   return url;
