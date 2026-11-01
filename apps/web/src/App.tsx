@@ -12,6 +12,7 @@ import { DiscoverPage } from './features/discover/DiscoverPage.js';
 import { MatchesPage } from './features/matches/MatchesPage.js';
 import { ChatPage } from './features/chat/ChatPage.js';
 import { CallPage } from './features/calls/CallPage.js';
+import { RandomPage } from './features/random/RandomPage.js';
 import { IncomingCallModal } from './components/IncomingCallModal.js';
 import { ProtectedRoute } from './components/ProtectedRoute.js';
 
@@ -53,6 +54,7 @@ export function App() {
           <Route path="/chat/:matchId" element={<ChatPage />} />
           <Route path="/call/:matchId" element={<CallPage />} />
           <Route path="/call" element={<CallPage />} />
+          <Route path="/random" element={<RandomPage />} />
         </Route>
 
         {/* Fallback */}

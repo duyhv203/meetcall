@@ -320,4 +320,64 @@ pnpm build
 ```
 
 ### 4. Bước kế tiếp
-- **Bước 7: Gọi video ngẫu nhiên kiểu Omegle / Azar**: Hàng đợi ghép cặp Redis atomic bằng Lua script, bộ lọc giới tính / độ tuổi, giới hạn 200 lượt next/giờ, tính năng vote kết bạn `POST /api/v1/calls/:id/friend-vote` (hai bên cùng vote tạo match tự động), cơ chế chống lặp cặp trong 10 phút, màn hình gọi ngẫu nhiên với nút Next và Báo cáo.
+- **Bước 7: Gọi video ngẫu nhiên kiểu Omegle / Azar (Đã hoàn thành)**
+
+---
+
+## Bước 7: Gọi video ngẫu nhiên kiểu Omegle / Azar (Đã hoàn thành)
+
+### 1. Đã làm
+- **Shared Types & DTOs**:
+  - `packages/shared/src/random.dto.ts`: `RandomEligibilityResponse`, `FriendVoteRequest`, `FriendVoteResponse`, `RandomSocketEvents`.
+- **Backend Random Module (`apps/api`)**:
+  - `RandomService`:
+    - `GET /api/v1/random/eligibility`: Kiểm tra điều kiện tham gia gọi ngẫu nhiên: bắt buộc đủ 18 tuổi (`403 AGE_NOT_VERIFIED`), không bị cấm tính năng gọi ngẫu nhiên (`403 RANDOM_BANNED` nếu `randomBannedUntil > NOW()`).
+    - Khởi tạo hàng đợi ghép cặp Redis Atomic bằng Lua script / Redis transaction (`meetcall:random:queue`), lấy cặp người dùng đồng thời, loại trừ bản thân.
+    - Cơ chế chống lặp cặp (10-minute pair cooldown): Sử dụng Redis set với key `meetcall:cooldown:<pairKey>` có TTL 600 giây.
+    - Rate limit chống spam Next: Giới hạn tối đa 200 lượt next / 1 giờ (`429 RATE_LIMIT_EXCEEDED`).
+    - `POST /api/v1/calls/:id/friend-vote`: Ghi nhận phiếu vote kết bạn vào bảng `call_friend_votes`. Nếu cả 2 bên cùng vote đồng ý, hệ thống tự động tạo match trong bảng `matches` (đảm bảo ràng buộc `user_a < user_b`) và phát sự kiện `random:friend_match` realtime.
+  - `RealtimeGateway`:
+    - Đón nhận các sự kiện: `random:join`, `random:next`, `random:leave`.
+    - Tự động huỷ khỏi hàng đợi khi ngắt kết nối (`disconnect`).
+- **Frontend Web (`apps/web`)**:
+  - `src/stores/randomStore.ts`: Quản lý trạng thái gọi ngẫu nhiên, radar tìm kiếm, WebRTC PeerConnection, đệm candidate, và xử lý kết bạn / chuyển người khác.
+  - `src/features/random/RandomPage.tsx`:
+    - Bước xác nhận tuân thủ quy tắc cộng đồng 18+ và điều khoản an toàn trước khi vào phòng.
+    - Hiệu ứng radar tìm kiếm đối phương khi đang trong hàng đợi.
+    - Giao diện Dual Video (người lạ trên, webcam mình dưới góc phải).
+    - Các nút điều khiển: Next (chuyển người khác), Kết thúc, Báo cáo vi phạm, và Nút Thả tim kết bạn (Friend Vote).
+    - Modal chúc mừng khi cả 2 cùng vote kết bạn thành công ("It's a Match!").
+- **Kiểm thử Supertest bắt buộc (`apps/api/test/random.e2e-spec.ts`)**:
+  - Đã pass 100% (7/7 tests):
+    1. Chặn người dùng chưa xác minh tuổi 18+ (403 AGE_NOT_VERIFIED)
+    2. Chặn người dùng đang bị khoá gọi ngẫu nhiên (403 RANDOM_BANNED)
+    3. Trả về hợp lệ 200 OK cho người dùng đủ điều kiện
+    4. Ghép cặp ngẫu nhiên nguyên tử qua hàng đợi Redis
+    5. Chống lặp cặp trong 10 phút giữa 2 người vừa nói chuyện
+    6. Chặn vượt quá giới hạn 200 lượt next / giờ (429 RATE_LIMIT_EXCEEDED)
+    7. Vote kết bạn: 1 bên vote chưa tạo match, 2 bên cùng vote tự động tạo match
+- **Tổng số tests e2e toàn hệ thống**: 49 tests (7 suites) đều pass tuyệt đối!
+
+### 2. Quyết định kỹ thuật quan trọng
+- **Ghép cặp nguyên tử (Atomic Matchmaking)**: Sử dụng Redis queue kết hợp kiểm tra cooldown trực tiếp trước khi ghép cặp, tránh tình trạng race-condition khi hàng ngàn người dùng tìm kiếm đồng thời.
+- **Ràng buộc an toàn & Chống quấy rối**: Tách biệt thời gian khoá gọi ngẫu nhiên `randomBannedUntil` trong database, cho phép đình chỉ tính năng gọi ngẫu nhiên mà không cần khoá hẳn toàn bộ tài khoản nếu vi phạm ở mức độ cảnh cáo.
+
+### 3. Lệnh để chạy và kiểm tra lại bước này
+```bash
+# 1. Chạy e2e tests cho Random Calls
+pnpm --filter @meetcall/api test:e2e test/random.e2e-spec.ts
+
+# 2. Chạy toàn bộ e2e test suite (49 tests)
+pnpm --filter @meetcall/api test:e2e
+
+# 3. Build toàn bộ monorepo
+pnpm build
+```
+
+### 4. Bước kế tiếp
+- **Bước 8: An toàn và quản trị (Safety & Admin)**:
+  - Chặn người dùng (`POST /api/v1/blocks`), loại trừ 2 chiều trong discovery, chat, và random call.
+  - Báo cáo vi phạm (`POST /api/v1/reports`), tự động khoá gọi ngẫu nhiên 24h nếu nhận 3 báo cáo trong 24h, gắn cờ ưu tiên báo cáo `minor`.
+  - Admin endpoints (`GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, `POST /api/v1/admin/users/:id/suspend`, `GET /api/v1/admin/photos`).
+  - Webhook xác minh độ tuổi (`POST /api/v1/age-verification/webhook`).
+  - Giao diện ReportModal, BlockButton, danh sách người đã chặn `/settings/blocked`, và trang Admin `/admin`.

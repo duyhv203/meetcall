@@ -14,6 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service.js';
 import { ChatService } from '../chat/chat.service.js';
 import { CallsService } from '../calls/calls.service.js';
+import { RandomService } from '../random/random.service.js';
 import type { CallEndReason } from '@prisma/client';
 
 interface JwtPayload {
@@ -42,6 +43,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly chatService: ChatService,
     @Inject(forwardRef(() => CallsService))
     private readonly callsService: CallsService,
+    @Inject(forwardRef(() => RandomService))
+    private readonly randomService: RandomService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -82,6 +85,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   handleDisconnect(client: Socket): void {
     if (client.data.userId) {
       this.logger.debug(`User ${client.data.userId} disconnected socket ${client.id}`);
+      void this.randomService.leaveQueue(client.data.userId);
     }
   }
 
@@ -94,6 +98,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     return { status: 'ok' };
   }
 
+  // CHAT EVENTS
   @SubscribeMessage('chat:send')
   async handleChatSend(
     @ConnectedSocket() client: Socket,
@@ -133,6 +138,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     return { success: res.success };
   }
 
+  // DIRECT CALL EVENTS
   @SubscribeMessage('call:accept')
   async handleCallAccept(
     @ConnectedSocket() client: Socket,
@@ -164,6 +170,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     return { success: true };
   }
 
+  // WEBRTC SIGNALING
   @SubscribeMessage('rtc:signal')
   handleRtcSignal(
     @ConnectedSocket() client: Socket,
@@ -172,6 +179,55 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const userId = client.data.userId;
     if (!userId) return;
     this.callsService.forwardSignal(userId, data.callId, data.targetUserId, data.signal);
+  }
+
+  // RANDOM OMEGLE CALL EVENTS
+  @SubscribeMessage('random:join')
+  async handleRandomJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data?: { preferredGender?: string },
+  ): Promise<{ paired: boolean; error?: string }> {
+    const userId = client.data.userId;
+    if (!userId) return { paired: false, error: 'UNAUTHORIZED' };
+    try {
+      const res = await this.randomService.joinQueue(userId, client.id, data?.preferredGender);
+      return res;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Join random queue failed';
+      return { paired: false, error: message };
+    }
+  }
+
+  @SubscribeMessage('random:next')
+  async handleRandomNext(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { callId?: string; preferredGender?: string },
+  ): Promise<{ paired: boolean; error?: string }> {
+    const userId = client.data.userId;
+    if (!userId) return { paired: false, error: 'UNAUTHORIZED' };
+    try {
+      if (data.callId) {
+        await this.randomService.skipCall(userId, data.callId);
+      }
+      return await this.randomService.joinQueue(userId, client.id, data.preferredGender);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Next random failed';
+      return { paired: false, error: message };
+    }
+  }
+
+  @SubscribeMessage('random:leave')
+  async handleRandomLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data?: { callId?: string },
+  ): Promise<{ success: boolean }> {
+    const userId = client.data.userId;
+    if (!userId) return { success: false };
+    await this.randomService.leaveQueue(userId);
+    if (data?.callId) {
+      await this.randomService.skipCall(userId, data.callId);
+    }
+    return { success: true };
   }
 
   emitToUser(userId: string, event: string, data: unknown): void {
