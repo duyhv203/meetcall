@@ -271,6 +271,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
+  isUserOnline(userId: string): boolean {
+    if (!this.server?.sockets?.adapter?.rooms) return false;
+    const room = this.server.sockets.adapter.rooms.get(`user:${userId}`);
+    return Boolean(room && room.size > 0);
+  }
+
   emitToMatch(matchId: string, event: string, data: unknown): void {
     if (this.server) {
       this.server.to(`match:${matchId}`).emit(event, data);

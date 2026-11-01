@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AuthResponse, AuthUser } from '@meetcall/shared';
 import { api, setAccessToken } from '../lib/api.js';
+import { connectSocket, disconnectSocket } from '../lib/socket.js';
 
 interface AuthState {
   user: AuthUser | null;
@@ -23,6 +24,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   setAuth: (user, token) => {
     setAccessToken(token);
+    connectSocket();
     set({
       user,
       accessToken: token,
@@ -37,6 +39,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       // Ignore logout errors and clean state anyway
     } finally {
+      disconnectSocket();
       setAccessToken(null);
       set({
         user: null,
@@ -54,6 +57,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         method: 'POST',
       });
       setAccessToken(res.accessToken);
+      connectSocket();
       set({
         user: res.user,
         accessToken: res.accessToken,

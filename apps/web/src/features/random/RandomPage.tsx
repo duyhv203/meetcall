@@ -38,6 +38,7 @@ export function RandomPage() {
     toggleMic,
     toggleCamera,
     onPaired,
+    handleIncomingSignal,
     onPartnerLeft,
   } = useRandomStore();
 
@@ -102,15 +103,31 @@ export function RandomPage() {
       onPartnerLeft();
     };
 
+    const handleSignal = (payload: {
+      callId: string;
+      senderId: string;
+      signal: { sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit };
+    }) => {
+      void handleIncomingSignal(payload);
+    };
+
+    const handleError = (payload: { code: string; message: string }) => {
+      useRandomStore.setState({ pairingStatus: 'idle', error: payload.message });
+    };
+
     socket.on('random:paired', handlePaired);
     socket.on('random:partner_left', handlePartnerLeft);
+    socket.on('rtc:signal', handleSignal);
+    socket.on('random:error', handleError);
 
     return () => {
       socket.off('random:paired', handlePaired);
       socket.off('random:partner_left', handlePartnerLeft);
+      socket.off('rtc:signal', handleSignal);
+      socket.off('random:error', handleError);
       leaveRandomCall();
     };
-  }, [onPaired, onPartnerLeft, leaveRandomCall]);
+  }, [onPaired, handleIncomingSignal, onPartnerLeft, leaveRandomCall]);
 
   // Connect local video
   useEffect(() => {

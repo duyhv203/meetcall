@@ -35,6 +35,11 @@ interface RandomState {
   toggleMic: () => void;
   toggleCamera: () => void;
   onPaired: (payload: RandomPairedPayload) => Promise<void>;
+  handleIncomingSignal: (payload: {
+    callId: string;
+    senderId: string;
+    signal: { sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit };
+  }) => Promise<void>;
   onPartnerLeft: () => void;
 }
 
@@ -151,6 +156,51 @@ export const useRandomStore = create<RandomState>((set, get) => ({
       set({
         error: err instanceof Error ? err.message : 'Lỗi thiết lập WebRTC ngẫu nhiên',
       });
+    }
+  },
+
+  handleIncomingSignal: async (payload: {
+    callId: string;
+    senderId: string;
+    signal: { sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit };
+  }) => {
+    const { signal, senderId, callId } = payload;
+    const { partner } = get();
+
+    if (!partner || partner.id !== senderId) return;
+
+    try {
+      if (signal.sdp) {
+        if (!peerConnection) return;
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+
+        while (pendingCandidates.length > 0) {
+          const candidate = pendingCandidates.shift();
+          if (candidate) {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+          }
+        }
+
+        if (signal.sdp.type === 'offer') {
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+
+          const socket = getSocket();
+          socket.emit('rtc:signal', {
+            callId,
+            targetUserId: senderId,
+            signal: { sdp: answer },
+          });
+        }
+      } else if (signal.candidate) {
+        if (peerConnection && peerConnection.remoteDescription) {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(signal.candidate)).catch(() => {});
+        } else {
+          pendingCandidates.push(signal.candidate);
+        }
+      }
+    } catch (err) {
+      console.error('Lỗi xử lý signaling WebRTC ngẫu nhiên:', err);
     }
   },
 

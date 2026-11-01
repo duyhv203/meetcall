@@ -31,7 +31,7 @@ export class RandomService {
   private readonly logger = new Logger(RandomService.name);
   private readonly QUEUE_KEY = 'random:waiting_queue';
   private readonly MAX_NEXT_PER_HOUR = 200;
-  private readonly PAIR_COOLDOWN_SECONDS = 600; // 10 minutes
+  private readonly PAIR_COOLDOWN_SECONDS = 5; // 5 seconds for responsive testing and matching
 
   constructor(
     private readonly prisma: PrismaService,
@@ -182,7 +182,13 @@ export class RandomService {
         const item: WaitingUser = JSON.parse(rawQueue[i]);
         if (item.userId === userId) continue;
 
-        // Check if recently paired (10 min cooldown)
+        // Verify waiting user is still online on websocket; remove stale ghost entries
+        if (!this.realtimeGateway.isUserOnline(item.userId)) {
+          void redis.lrem(this.QUEUE_KEY, 1, rawQueue[i]);
+          continue;
+        }
+
+        // Check if recently paired (5 sec cooldown)
         const cooldownKey = `random:cooldown:${userId}:${item.userId}`;
         const isCooldown = await redis.get(cooldownKey);
         if (isCooldown) continue;
