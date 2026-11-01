@@ -52,9 +52,8 @@ export class ProfilesService {
     const isProfileComplete = Boolean(
       user.profile.displayName &&
         user.profile.displayName.length >= 2 &&
-        user.profile.gender &&
-        user.profile.gender !== 'other' &&
-        user.profile.city,
+        Boolean(user.profile.gender) &&
+        Boolean(user.profile.city),
     );
 
     const onboardingCompleted = Boolean(isProfileComplete && hasApprovedPhoto);

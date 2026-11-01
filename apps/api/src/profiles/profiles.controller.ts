@@ -49,7 +49,6 @@ export class ProfilesController {
   }
 
   @Patch('profile')
-  @Put('profile')
   async updateProfile(
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdateProfileRequest,
@@ -57,8 +56,15 @@ export class ProfilesController {
     return this.profilesService.updateProfile(user.id, dto);
   }
 
+  @Put('profile')
+  async updateProfilePut(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateProfileRequest,
+  ): Promise<ProfileData> {
+    return this.profilesService.updateProfile(user.id, dto);
+  }
+
   @Put('preferences')
-  @Patch('preferences')
   async updatePreferences(
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdatePreferencesRequest,
@@ -66,9 +72,24 @@ export class ProfilesController {
     return this.profilesService.updatePreferences(user.id, dto);
   }
 
+  @Patch('preferences')
+  async updatePreferencesPatch(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdatePreferencesRequest,
+  ) {
+    return this.profilesService.updatePreferences(user.id, dto);
+  }
+
   @Put('location')
-  @Patch('location')
   async updateLocation(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateLocationRequest,
+  ): Promise<{ success: boolean; city?: string }> {
+    return this.profilesService.updateLocation(user.id, dto);
+  }
+
+  @Patch('location')
+  async updateLocationPatch(
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdateLocationRequest,
   ): Promise<{ success: boolean; city?: string }> {
@@ -92,9 +113,25 @@ export class ProfilesController {
   }
 
   @Patch('photos/order')
-  @Put('photos/reorder')
-  @Patch('photos/reorder')
   async reorderPhotos(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: { ids?: string[]; photoIds?: string[] },
+  ): Promise<PhotoData[]> {
+    const ids = dto.ids || dto.photoIds || [];
+    return this.photosService.reorderPhotos(user.id, ids);
+  }
+
+  @Put('photos/reorder')
+  async reorderPhotosPut(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: { ids?: string[]; photoIds?: string[] },
+  ): Promise<PhotoData[]> {
+    const ids = dto.ids || dto.photoIds || [];
+    return this.photosService.reorderPhotos(user.id, ids);
+  }
+
+  @Patch('photos/reorder')
+  async reorderPhotosPatch(
     @CurrentUser() user: AuthUser,
     @Body() dto: { ids?: string[]; photoIds?: string[] },
   ): Promise<PhotoData[]> {

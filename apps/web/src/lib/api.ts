@@ -1,5 +1,17 @@
 import type { ApiErrorPayload, AuthResponse } from '@meetcall/shared';
 
+export class ApiError extends Error {
+  code: string;
+  error?: { code: string; message: string };
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.error = { code, message };
+  }
+}
+
 let accessToken: string | null = null;
 
 export const setAccessToken = (token: string | null): void => {
@@ -112,7 +124,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       },
     }))) as ApiErrorPayload;
 
-    throw errorBody;
+    const message = errorBody?.error?.message || response.statusText || 'Có lỗi xảy ra khi gửi yêu cầu';
+    const code = errorBody?.error?.code || `HTTP_${response.status}`;
+    throw new ApiError(code, message);
   }
 
   return response.json() as Promise<T>;

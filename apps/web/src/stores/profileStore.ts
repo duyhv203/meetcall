@@ -47,7 +47,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
   updateProfile: async (dto: UpdateProfileRequest) => {
     const updated = await api<ProfileData>('/me/profile', {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(dto),
     });
     const current = get().me;

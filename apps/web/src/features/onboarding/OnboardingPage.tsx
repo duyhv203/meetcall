@@ -181,8 +181,12 @@ export function OnboardingPage() {
     try {
       await updateProfile({ displayName: displayName.trim(), gender });
       setStep(2);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi lưu thông tin');
+    } catch (err: unknown) {
+      setErrorMsg(
+        (err as any)?.message ||
+          (err as any)?.error?.message ||
+          'Lỗi khi lưu thông tin',
+      );
     } finally {
       setLoading(false);
     }
@@ -194,8 +198,12 @@ export function OnboardingPage() {
     try {
       await updateProfile({ bio: bio.trim(), interests });
       setStep(3);
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi lưu sở thích');
+    } catch (err: unknown) {
+      setErrorMsg(
+        (err as any)?.message ||
+          (err as any)?.error?.message ||
+          'Lỗi khi lưu sở thích',
+      );
     } finally {
       setLoading(false);
     }
@@ -237,8 +245,12 @@ export function OnboardingPage() {
       } else {
         navigate('/', { replace: true });
       }
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : 'Lỗi khi hoàn tất hồ sơ');
+    } catch (err: unknown) {
+      setErrorMsg(
+        (err as any)?.message ||
+          (err as any)?.error?.message ||
+          'Lỗi khi hoàn tất hồ sơ',
+      );
     } finally {
       setLoading(false);
     }
