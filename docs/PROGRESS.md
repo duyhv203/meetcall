@@ -29,42 +29,85 @@
   - `.github/workflows/ci.yml` kiểm tra lint, typecheck, migration, test, build trên Ubuntu runner với Postgres PostGIS và Redis service.
   - Test suite: `test/underage.spec.ts` (kiểm tra DB CHECK constraint từ chối người dưới 18 tuổi) và `test/health.e2e-spec.ts` (kiểm tra `/api/v1/health`).
 
+---
+
+## Bước 2: Xác thực (Auth) (Đã hoàn thành)
+
+### 1. Đã làm
+- **Shared Types & DTOs**:
+  - `packages/shared/src/auth.dto.ts`: `RegisterRequest`, `LoginRequest`, `ForgotPasswordRequest`, `ResetPasswordRequest`, `AuthUser`, `AuthResponse`, `AuthSuccessMessage`.
+- **Backend Auth Module (`apps/api`)**:
+  - `POST /api/v1/auth/register`:
+    - Tính tuổi từ `birthdate` ở server, từ chối người dưới 18 tuổi (`400 UNDER_AGE`).
+    - Kiểm tra email trùng lặp (`409 EMAIL_TAKEN`).
+    - Băm mật khẩu bằng `argon2id`.
+    - Transaction tạo `users` và `profiles` rỗng (displayName tạm từ email).
+    - Cấp access token JWT (15 phút) và refresh token (30 ngày, băm SHA-256 lưu bảng `refresh_tokens`, gửi cookie `httpOnly`, `SameSite=Lax`).
+  - `POST /api/v1/auth/login`:
+    - Sai credentials trả 401 `INVALID_CREDENTIALS` chung chung (không làm lộ email có tồn tại hay không).
+    - Tài khoản `suspended` trả 403 `ACCOUNT_SUSPENDED`.
+    - Đăng nhập thành công xoay vòng refresh token mới.
+  - `POST /api/v1/auth/refresh`:
+    - Đọc cookie, tra cứu hash trong `refresh_tokens`.
+    - Token rotation: Thu hồi token cũ, cấp cặp token mới.
+    - Phát hiện lạm dụng (Token Reuse Detection): Nếu token đã bị thu hồi mà vẫn bị dùng lại, tự động thu hồi toàn bộ token của user đó (`revokedAt = now()`).
+  - `POST /api/v1/auth/logout`:
+    - Thu hồi refresh token hiện tại trong database và xoá cookie.
+  - `POST /api/v1/auth/forgot-password` & `POST /api/v1/auth/reset-password`:
+    - Quên mật khẩu luôn trả HTTP 200, tạo token ngẫu nhiên lưu Redis (TTL 30 phút).
+    - Gửi email hướng dẫn qua Mailpit (dev SMTP port 1025) bằng `MailService` (Nodemailer).
+    - Đặt lại mật khẩu thành công sẽ thu hồi toàn bộ refresh token cũ của user.
+  - `AuthGuard` & `@CurrentUser()`:
+    - Bảo vệ route bằng JWT Bearer token, tự động kiểm tra trạng thái active/suspended.
+    - Endpoint `GET /api/v1/auth/me`.
+  - Rate limiting (Redis):
+    - `AuthRateLimitService`: Tối đa 10 lần thao tác sai mỗi 15 phút theo IP và email, vi phạm trả `429 TOO_MANY_ATTEMPTS`.
+- **Frontend Auth (`apps/web`)**:
+  - `src/lib/api.ts`: HTTP client tự động gắn Bearer token từ memory (không lưu localStorage), tự động bắt 401 để gọi `/auth/refresh` một lần rồi thử lại; thất bại đưa về `/login`.
+  - `src/stores/authStore.ts`: Zustand store quản lý user, accessToken, khôi phục phiên (`restoreSession`) khi tải lại trang.
+  - Giao diện Auth:
+    - `/register`: Form đăng ký với ô tick cam kết đủ 18 tuổi và đồng ý điều khoản.
+    - `/login`: Form đăng nhập với link quên mật khẩu / đăng ký.
+    - `/forgot-password`: Form yêu cầu reset password, hướng dẫn mở Mailpit ở localhost:8025.
+    - `/reset-password`: Form nhập mật khẩu mới từ link token.
+    - `ProtectedRoute`: Chặn truy cập chưa đăng nhập.
+    - `HomePage`: Trang chủ sau khi đăng nhập, hiển thị thông tin tài khoản và nút Đăng xuất.
+    - Hiển thị thông báo lỗi tiếng Việt thân thiện theo mã lỗi API (`UNDER_AGE`, `EMAIL_TAKEN`, `INVALID_CREDENTIALS`, `TOO_MANY_ATTEMPTS`...).
+- **Kiểm thử Supertest bắt buộc (`apps/api/test/auth.e2e-spec.ts`)**:
+  - Đã pass 100% (11/11 tests) bao gồm: đăng ký thành công, email trùng, dưới 18 tuổi bị từ chối, sai mật khẩu, refresh xoay vòng, reuse token cũ bị thu hồi hàng loạt, rate limit 10 lần sai, và AuthGuard.
+
 ### 2. Quyết định kỹ thuật quan trọng
-- **PostGIS geography(Point,4326)**: Sử dụng kiểu geography và GIST index để tối ưu các truy vấn khoảng cách bán kính `ST_DWithin` ở các bước khám phá sau này.
-- **CHECK ràng buộc 18 tuổi ở tầng DB**: Ràng buộc trực tiếp tại PostgreSQL `CHECK (birthdate <= CURRENT_DATE - INTERVAL '18 years')` nhằm đảm bảo dữ liệu không bao giờ bị vi phạm dù ở bất kỳ tầng nào.
-- **Sắp xếp thứ tự ID match**: Luôn lưu `user_a < user_b` kết hợp `UNIQUE(user_a, user_b)` để ngăn ngừa hoàn toàn match trùng lặp khi hai người vuốt cùng lúc.
-- **Quản lý cấu hình tập trung**: Bắt buộc kiểm tra biến môi trường qua Zod khi ứng dụng boot để fail-fast ngay lập tức nếu thiếu cấu hình.
+- **Argon2id**: Dùng thuật toán băm mật khẩu `argon2id` hiện đại, an toàn trước tấn công GPU/ASIC và side-channel.
+- **Token an toàn**: Access token JWT sống ngắn hạn 15 phút chỉ giữ trong memory của frontend; refresh token ngẫu nhiên 64 ký tự, băm SHA-256 trong DB, gửi qua cookie `httpOnly`, `SameSite=Lax`.
+- **Phát hiện tái sử dụng Refresh Token**: Khi một token đã revoke mà vẫn được gửi lên, hệ thống đánh dấu thu hồi toàn bộ token của tài khoản đó ngay lập tức (phòng chống token theft).
+- **Phòng chống dò email (User Enumeration)**: `POST /auth/login` và `POST /auth/forgot-password` luôn dùng thông điệp chung để không làm lộ email có tồn tại trong hệ thống hay không.
 
 ### 3. Biến môi trường mới trong .env.example
-- `NODE_ENV`, `PORT`, `API_PREFIX`, `WEB_ORIGIN`
-- `DATABASE_URL`
-- `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`
+- `JWT_SECRET`: Khóa bí mật ký JWT (tối thiểu 16 ký tự).
+- `JWT_EXPIRES_IN`: Thời gian sống của access token (mặc định `15m`).
 
 ### 4. Lệnh để chạy và kiểm tra lại bước này
 ```bash
-# 1. Khởi động docker
-docker compose up -d
-
-# 2. Migration và seed
-pnpm db:migrate
-pnpm db:seed
-
-# 3. Chạy toàn bộ test
+# 1. Chạy toàn bộ test suite (unit + e2e auth + health)
 pnpm test
 
-# 4. Kiểm tra code quality & build
-pnpm lint
+# 2. Kiểm tra typecheck và lint
 pnpm typecheck
+pnpm lint
+
+# 3. Build monorepo
 pnpm build
+
+# 4. Chạy dev server
+pnpm dev
 ```
 
 ### 5. Việc còn nợ hoặc rủi ro đã biết
-- Chưa triển khai các endpoint nghiệp vụ và màn hình auth (nằm trong phạm vi Bước 2).
+- Chưa làm hồ sơ chi tiết (ảnh, giới tính, sở thích, vị trí) - nằm trong phạm vi Bước 3.
 
 ### 6. Bước kế tiếp
-- **Bước 2: Xác thực (Auth)**: Làm module đăng ký, đăng nhập, refresh token xoay vòng, quên mật khẩu, AuthGuard, argon2id, rate limit và các màn hình React tương ứng.
+- **Bước 3: Hồ sơ và ảnh**: Onboarding tạo hồ sơ (tên, giới tính, bio, sở thích), vị trí GPS / PostGIS, upload ảnh qua URL ký sẵn (S3/R2), worker xử lý ảnh (sharp, xóa EXIF GPS, kiểm duyệt ảnh), TanStack Query trên frontend.
 
 ---
 **Gợi ý commit message**:
-`feat: initialize monorepo, docker compose, prisma postgis schema, ci and health check`
+`feat: implement auth module, token rotation, rate limiting, and web auth screens`

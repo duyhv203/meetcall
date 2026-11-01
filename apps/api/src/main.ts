@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
@@ -15,6 +16,9 @@ async function bootstrap(): Promise<void> {
 
   // Security Headers via Helmet
   app.use(helmet());
+
+  // Cookie Parser
+  app.use(cookieParser());
 
   // CORS Configuration
   const webOrigin = configService.get<string>('WEB_ORIGIN', 'http://localhost:5173');

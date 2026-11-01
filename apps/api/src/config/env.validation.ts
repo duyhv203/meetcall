@@ -8,6 +8,9 @@ export const envSchema = z.object({
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
 
+  JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters').default('meetcall_super_secret_jwt_key_32_chars_dev_only'),
+  JWT_EXPIRES_IN: z.string().default('15m'),
+
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_PASSWORD: z.string().optional().default(''),
