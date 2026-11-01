@@ -41,6 +41,20 @@ export class StorageController {
     @Query('key') key: string,
     @Res() res: Response,
   ): Promise<void> {
+    await this.serveFile(key, res);
+  }
+
+  @Get('file/*')
+  async getLocalFileWildcard(
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const rawPath = req.url.split('/storage/file/')[1] || '';
+    const cleanKey = decodeURIComponent(rawPath.split('?')[0]);
+    await this.serveFile(cleanKey, res);
+  }
+
+  private async serveFile(key: string, res: Response): Promise<void> {
     if (!key) {
       res.status(HttpStatus.BAD_REQUEST).json({
         error: { code: 'BAD_REQUEST', message: 'Query parameter "key" is required' },
