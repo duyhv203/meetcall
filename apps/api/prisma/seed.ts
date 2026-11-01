@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 async function main(): Promise<void> {
   console.log('🌱 Starting seed...');
 
-  const passwordHash = await argon2.hash('Secret12345!', {
+  const passwordHash = await argon2.hash('Password123!', {
     type: argon2.argon2id,
   });
 
