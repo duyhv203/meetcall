@@ -2,9 +2,5 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
-onlyBuiltDependencies:
-  - '@prisma/client'
-  - '@prisma/engines'
-  - 'argon2'
-  - 'esbuild'
-  - 'prisma'
+allowBuilds:
+  msgpackr-extract: true

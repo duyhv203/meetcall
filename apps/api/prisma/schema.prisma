@@ -105,6 +105,7 @@ model Profile {
   birthdate     DateTime                                @db.Date
   gender        String                                  @db.VarChar(20)
   bio           String?                                 @db.VarChar(300)
+  interests     String[]                                @default([])
   location      Unsupported("geography(Point,4326)")?   @map("location")
   city          String?                                 @db.VarChar(100)
   lastActiveAt  DateTime                                @default(now()) @map("last_active_at") @db.Timestamptz

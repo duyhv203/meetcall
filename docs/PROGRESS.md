@@ -103,11 +103,59 @@ pnpm dev
 ```
 
 ### 5. Việc còn nợ hoặc rủi ro đã biết
-- Chưa làm hồ sơ chi tiết (ảnh, giới tính, sở thích, vị trí) - nằm trong phạm vi Bước 3.
-
-### 6. Bước kế tiếp
-- **Bước 3: Hồ sơ và ảnh**: Onboarding tạo hồ sơ (tên, giới tính, bio, sở thích), vị trí GPS / PostGIS, upload ảnh qua URL ký sẵn (S3/R2), worker xử lý ảnh (sharp, xóa EXIF GPS, kiểm duyệt ảnh), TanStack Query trên frontend.
+- Đã giải quyết hoàn toàn trong Bước 3.
 
 ---
-**Gợi ý commit message**:
-`feat: implement auth module, token rotation, rate limiting, and web auth screens`
+
+## Bước 3: Hồ sơ, ảnh, tuỳ chọn tìm kiếm & vị trí (Đã hoàn thành)
+
+### 1. Đã làm
+- **Shared Types & DTOs**:
+  - `packages/shared/src/profile.dto.ts`: `ProfileData`, `PreferencesData`, `PhotoData`, `MeResponse`, `UpdateProfileRequest`, `UpdatePreferencesRequest`, `UpdateLocationRequest`, `GetUploadUrlRequest`, `GetUploadUrlResponse`, `ConfirmPhotoRequest`, `ReorderPhotosRequest`.
+- **Backend Photos & Storage (`apps/api`)**:
+  - `StorageService`: Hỗ trợ dual mode lưu trữ ảnh: Cloud S3/R2 presigned URL và Local Filesystem storage cho môi trường dev (`/api/v1/storage/upload` & `/api/v1/storage/file`).
+  - `MockModerationProvider` (`ModerationProvider` interface): Kiểm duyệt ảnh tự động, gắn cờ duyệt (approved) hoặc từ chối (rejected).
+  - `PhotoProcessorService`: BullMQ processor dùng `sharp` tự động:
+    - Loại bỏ triệt để metadata nhạy cảm (đặc biệt toạ độ EXIF GPS).
+    - Xoay đúng chiều theo orientation và resize chuẩn kích thước tối đa 1600px, nén JPEG quality 85.
+  - `PhotosService`:
+    - `POST /api/v1/me/photos/upload-url`: Kiểm tra định dạng (chỉ chấp nhận JPEG, PNG, WebP) và dung lượng tối đa 8 MB. Sinh presigned upload URL.
+    - `POST /api/v1/me/photos`: Xác thực quyền sở hữu key ảnh, lưu DB với `moderationStatus: approved`, gán thứ tự `position`.
+    - `DELETE /api/v1/me/photos/:id`: Xoá ảnh khỏi DB và storage với xác thực quyền sở hữu.
+    - `PUT /api/v1/me/photos/reorder`: Cập nhật lại thứ tự ảnh, đổi ảnh đại diện chính.
+- **Backend Profiles & Preferences (`apps/api`)**:
+  - `GET /api/v1/me`: Trả về dữ liệu tổng hợp user, profile, preferences, photos và tính toán trạng thái `onboardingCompleted` (yêu cầu displayName, giới tính, city/location và ít nhất 1 ảnh đã được duyệt).
+  - `PUT /api/v1/me/profile`: Cập nhật tên hiển thị (2-30 ký tự), giới tính, bio (tối đa 300 ký tự), danh sách sở thích `interests` (PostgreSQL text array), thành phố.
+  - `PUT /api/v1/me/preferences`: Cập nhật bộ lọc tìm kiếm (`minAge >= 18`, `maxAge`, `genderFilter`, `maxDistanceKm`).
+  - `PUT /api/v1/me/location`: Nhận toạ độ GPS (lat, lng), cập nhật cột PostGIS `geography(Point, 4326)` bằng hàm `ST_SetSRID(ST_MakePoint(lng, lat), 4326)`. Toạ độ GPS tuyệt đối không bao giờ bị trả về trực tiếp trong response API.
+- **Frontend Web (`apps/web`)**:
+  - `src/stores/profileStore.ts`: Quản lý state profile, preferences, photos, upload trực tiếp lên uploadUrl và cập nhật thông tin.
+  - `src/features/onboarding/OnboardingPage.tsx`: Flow Onboarding 4 bước:
+    1. Tên hiển thị (2-30 ký tự) & Giới tính.
+    2. Bio (tối đa 300 ký tự) & Sở thích (chips chọn nhanh + tag tự nhập).
+    3. Tải ảnh lên: xem danh sách, đặt làm ảnh chính, xoá ảnh, yêu cầu tối thiểu 1 ảnh.
+    4. Vị trí & Tiêu chuẩn tìm kiếm: Nút "Lấy vị trí GPS" (Geolocation API), slider khoảng cách (5-100 km), slider độ tuổi (tối thiểu 18), giới tính quan tâm.
+  - `src/features/settings/ProfileSettingsPage.tsx`: Màn hình xem và cập nhật hồ sơ, quản lý ảnh, cập nhật bộ lọc, kèm modal "Xem trước thẻ hồ sơ" (Profile Card view).
+  - `src/components/ProtectedRoute.tsx`: Route guard tự động redirect sang `/onboarding` nếu tài khoản đăng nhập nhưng chưa hoàn tất onboarding.
+- **Kiểm thử Supertest bắt buộc (`apps/api/test/profile-photos.e2e-spec.ts`)**:
+  - Đã pass 100% (8/8 tests): từ chối định dạng sai, từ chối file > 8MB, cấp presigned upload URL, chặn quyền xác nhận ảnh của người khác (403), từ chối minAge < 18, cập nhật preferences hợp lệ, cập nhật toạ độ GPS không làm lộ toạ độ nhạy cảm, và loại bỏ metadata EXIF GPS bằng Sharp.
+
+### 2. Quyết định kỹ thuật quan trọng
+- **Bảo mật toạ độ GPS**: Toạ độ người dùng được lưu trữ bằng kiểu `geography(Point,4326)` trong PostgreSQL PostGIS; API chỉ cập nhật toạ độ và không bao giờ phản hồi toạ độ thô ra ngoài, chuẩn bị cho thuật toán tính khoảng cách làm tròn 5 km ở Bước 4.
+- **Bảo mật ảnh & EXIF Stripping**: Xử lý ảnh bằng thư viện `sharp` loại bỏ hoàn toàn thẻ EXIF GPS trước khi lưu trữ nhằm chống lộ vị trí chụp ảnh của người dùng.
+- **Ràng buộc tuổi tìm kiếm**: Ràng buộc `minAge >= 18` được thực thi nghiêm ngặt ở tầng Shared DTO, Controller validation pipe, và Service layer.
+
+### 3. Lệnh để chạy và kiểm tra lại bước này
+```bash
+# 1. Chạy e2e tests cho Hồ sơ & Ảnh
+pnpm --filter @meetcall/api test:e2e test/profile-photos.e2e-spec.ts
+
+# 2. Chạy toàn bộ e2e test suite
+pnpm --filter @meetcall/api test:e2e
+
+# 3. Build toàn bộ monorepo
+pnpm build
+```
+
+### 4. Bước kế tiếp
+- **Bước 4: Khám phá, vuốt thẻ và tạo match**: Query tìm kiếm PostGIS `ST_DWithin`, làm tròn khoảng cách 5 km, ghi nhận lượt quẹt (swipe), transaction kiểm tra like chéo và tạo match, thông báo realtime qua Socket.IO.
