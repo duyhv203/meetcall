@@ -6,7 +6,11 @@ let socket: Socket | null = null;
 export function getSocket(): Socket {
   if (!socket) {
     const token = getAccessToken();
-    socket = io('http://localhost:3000', {
+    const socketUrl =
+      (import.meta.env.VITE_SOCKET_URL as string) ||
+      (import.meta.env.VITE_API_URL as string) ||
+      'http://localhost:3000';
+    socket = io(socketUrl, {
       auth: { token: token ? `Bearer ${token}` : '' },
       autoConnect: false,
       reconnection: true,

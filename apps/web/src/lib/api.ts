@@ -28,8 +28,18 @@ function onRefreshed(token: string | null): void {
   refreshSubscribers = [];
 }
 
+const getBaseApiUrl = (): string => {
+  return (import.meta.env.VITE_API_URL as string) || '';
+};
+
+export const buildApiUrl = (path: string): string => {
+  const base = getBaseApiUrl().replace(/\/$/, '');
+  const prefix = path.startsWith('/api') ? path : `/api/v1${path}`;
+  return base ? `${base}${prefix}` : prefix;
+};
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const url = path.startsWith('/api') ? path : `/api/v1${path}`;
+  const url = buildApiUrl(path);
 
   const headers = new Headers(init.headers || {});
   if (!headers.has('Content-Type') && !(init.body instanceof FormData)) {
@@ -56,7 +66,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       isRefreshing = true;
 
       try {
-        const refreshRes = await fetch('/api/v1/auth/refresh', {
+        const refreshRes = await fetch(buildApiUrl('/auth/refresh'), {
           method: 'POST',
           credentials: 'include',
         });
@@ -134,8 +144,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export function resolvePhotoUrl(url?: string | null): string {
   if (!url) return '';
+  const base = getBaseApiUrl().replace(/\/$/, '');
   if (url.startsWith('http://localhost:3000')) {
-    return url.replace('http://localhost:3000', '');
+    const rel = url.replace('http://localhost:3000', '');
+    return base ? `${base}${rel}` : rel;
   }
   return url;
 }
