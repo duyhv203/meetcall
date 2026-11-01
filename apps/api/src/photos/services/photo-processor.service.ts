@@ -18,8 +18,9 @@ export interface PhotoJobData {
 @Injectable()
 export class PhotoProcessorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PhotoProcessorService.name);
-  private queue!: Queue<PhotoJobData>;
-  private worker!: Worker<PhotoJobData>;
+  private queue?: Queue<PhotoJobData>;
+  private worker?: Worker<PhotoJobData>;
+  private isAsyncQueueEnabled = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -30,35 +31,71 @@ export class PhotoProcessorService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    const redisUrl = this.configService.get<string>('REDIS_URL');
     const host = this.configService.get<string>('REDIS_HOST', 'localhost');
     const port = this.configService.get<number>('REDIS_PORT', 6379);
     const password = this.configService.get<string>('REDIS_PASSWORD');
 
-    const connection = {
-      host,
-      port,
-      password: password || undefined,
-    };
-
-    this.queue = new Queue<PhotoJobData>('photo-processing', { connection });
-
-    this.worker = new Worker<PhotoJobData>(
-      'photo-processing',
-      async (job: Job<PhotoJobData>) => {
-        await this.processPhotoJob(job.data);
-      },
-      { connection, concurrency: 4 },
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isLocalhost = !host || host === 'localhost' || host === '127.0.0.1';
+    const hasExternalRedis = Boolean(
+      redisUrl || (!isLocalhost && host !== 'memory' && host !== 'in-memory'),
     );
 
-    this.worker.on('failed', (job, err) => {
-      this.logger.error(`Photo job ${job?.id} failed:`, err);
-    });
+    // In production without external Redis, or when memory store is used, process directly in-process
+    if (host === 'memory' || host === 'in-memory' || (isProduction && !hasExternalRedis)) {
+      this.logger.log(
+        'PhotoProcessorService initialized with Direct Background Processing (in-process).',
+      );
+      this.isAsyncQueueEnabled = false;
+      return;
+    }
 
-    this.logger.log('PhotoProcessorService initialized with BullMQ worker.');
+    try {
+      const connection = redisUrl
+        ? { url: redisUrl }
+        : {
+            host,
+            port,
+            password: password || undefined,
+            maxRetriesPerRequest: null,
+          };
+
+      this.queue = new Queue<PhotoJobData>('photo-processing', {
+        connection: connection as any,
+      });
+
+      this.worker = new Worker<PhotoJobData>(
+        'photo-processing',
+        async (job: Job<PhotoJobData>) => {
+          await this.processPhotoJob(job.data);
+        },
+        { connection: connection as any, concurrency: 4 },
+      );
+
+      this.worker.on('failed', (job, err) => {
+        this.logger.error(`Photo job ${job?.id} failed:`, err);
+      });
+
+      this.isAsyncQueueEnabled = true;
+      this.logger.log('PhotoProcessorService initialized with BullMQ worker.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Could not initialize BullMQ worker (${msg}). Using direct background processing.`,
+      );
+      this.isAsyncQueueEnabled = false;
+    }
   }
 
   async addPhotoJob(data: PhotoJobData): Promise<void> {
-    await this.queue.add('process', data);
+    if (this.isAsyncQueueEnabled && this.queue) {
+      await this.queue.add('process', data);
+    } else {
+      setImmediate(() => {
+        void this.processPhotoJob(data);
+      });
+    }
   }
 
   async processPhotoJob(data: PhotoJobData): Promise<void> {
@@ -68,9 +105,9 @@ export class PhotoProcessorService implements OnModuleInit, OnModuleDestroy {
     try {
       const rawBuffer = await this.storageService.downloadBuffer(key);
 
-      // 1. Resize & Strip EXIF (sharp by default removes all EXIF and GPS tags unless withMetadata() is called)
+      // 1. Resize & Strip EXIF
       const processedBuffer = await sharp(rawBuffer)
-        .rotate() // auto-orient based on EXIF before stripping
+        .rotate()
         .resize(1600, 1600, {
           fit: 'inside',
           withoutEnlargement: true,
@@ -98,7 +135,9 @@ export class PhotoProcessorService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      this.logger.log(`Photo ${photoId} processed successfully: status=${moderation.approved ? 'approved' : 'rejected'}`);
+      this.logger.log(
+        `Photo ${photoId} processed successfully: status=${moderation.approved ? 'approved' : 'rejected'}`,
+      );
     } catch (error) {
       this.logger.error(`Failed to process photo ${photoId}:`, error);
       await this.prisma.photo.update({
