@@ -13,8 +13,11 @@ import { MatchesPage } from './features/matches/MatchesPage.js';
 import { ChatPage } from './features/chat/ChatPage.js';
 import { CallPage } from './features/calls/CallPage.js';
 import { RandomPage } from './features/random/RandomPage.js';
+import { BlockedUsersPage } from './features/settings/BlockedUsersPage.js';
+import { AdminDashboardPage } from './features/admin/AdminDashboardPage.js';
 import { IncomingCallModal } from './components/IncomingCallModal.js';
 import { ProtectedRoute } from './components/ProtectedRoute.js';
+import { AdminRoute } from './components/AdminRoute.js';
 
 export function App() {
   const { isInitialized, restoreSession } = useAuthStore();
@@ -55,6 +58,12 @@ export function App() {
           <Route path="/call/:matchId" element={<CallPage />} />
           <Route path="/call" element={<CallPage />} />
           <Route path="/random" element={<RandomPage />} />
+          <Route path="/settings/blocked" element={<BlockedUsersPage />} />
+        </Route>
+
+        {/* Protected Admin Routes */}
+        <Route element={<AdminRoute />}>
+          <Route path="/admin" element={<AdminDashboardPage />} />
         </Route>
 
         {/* Fallback */}

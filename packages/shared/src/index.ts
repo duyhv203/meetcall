@@ -5,3 +5,4 @@ export * from './discovery.dto.js';
 export * from './chat.dto.js';
 export * from './call.dto.js';
 export * from './random.dto.js';
+export * from './safety.dto.js';

@@ -154,7 +154,24 @@ export class ChatService {
       });
     }
 
-    // 4. Save message to DB
+    // 4. Verify 2-way block
+    const otherUserId = match.userA === senderId ? match.userB : match.userA;
+    const block = await this.prisma.block.findFirst({
+      where: {
+        OR: [
+          { blockerId: senderId, blockedId: otherUserId },
+          { blockerId: otherUserId, blockedId: senderId },
+        ],
+      },
+    });
+    if (block) {
+      throw new ForbiddenException({
+        code: 'USER_BLOCKED',
+        message: 'Không thể gửi tin nhắn do quan hệ chặn giữa hai người dùng.',
+      });
+    }
+
+    // 5. Save message to DB
     const message = await this.prisma.message.create({
       data: {
         matchId,

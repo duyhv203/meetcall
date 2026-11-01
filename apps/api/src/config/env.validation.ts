@@ -18,6 +18,8 @@ export const envSchema = z.object({
   SMTP_HOST: z.string().optional().default('localhost'),
   SMTP_PORT: z.coerce.number().optional().default(1025),
   SMTP_FROM: z.string().optional().default('no-reply@meetcall.local'),
+
+  AGE_VERIFICATION_SECRET: z.string().default('meetcall_age_webhook_secret_dev_only'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

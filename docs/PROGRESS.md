@@ -375,9 +375,74 @@ pnpm build
 ```
 
 ### 4. Bước kế tiếp
-- **Bước 8: An toàn và quản trị (Safety & Admin)**:
-  - Chặn người dùng (`POST /api/v1/blocks`), loại trừ 2 chiều trong discovery, chat, và random call.
-  - Báo cáo vi phạm (`POST /api/v1/reports`), tự động khoá gọi ngẫu nhiên 24h nếu nhận 3 báo cáo trong 24h, gắn cờ ưu tiên báo cáo `minor`.
-  - Admin endpoints (`GET /api/v1/admin/reports`, `POST /api/v1/admin/reports/:id/resolve`, `POST /api/v1/admin/users/:id/suspend`, `GET /api/v1/admin/photos`).
-  - Webhook xác minh độ tuổi (`POST /api/v1/age-verification/webhook`).
-  - Giao diện ReportModal, BlockButton, danh sách người đã chặn `/settings/blocked`, và trang Admin `/admin`.
+- **Bước 8: An toàn và quản trị (Đã hoàn thành)**
+
+---
+
+## Bước 8: An toàn và quản trị (Safety & Admin) (Đã hoàn thành)
+
+### 1. Đã làm
+- **Shared Types & DTOs**:
+  - `packages/shared/src/safety.dto.ts`: `CreateBlockRequest`, `BlockItemResponse`, `CreateReportRequest`, `CreateReportResponse`, `AdminReportItem`, `ResolveReportRequest`, `SuspendUserRequest`, `ModeratePhotoRequest`, `AgeVerificationWebhookPayload`.
+- **Backend Safety & Admin Module (`apps/api`)**:
+  - `RolesGuard` & `@Roles('admin')`: Phân quyền RBAC quản trị viên nghiêm ngặt, từ chối người dùng thường (`403 FORBIDDEN`).
+  - `SafetyService` & `SafetyController`:
+    - `POST /api/v1/blocks`: Chặn người dùng, từ chối tự chặn (`400 CANNOT_BLOCK_SELF`), tự động unmatch nếu có match giữa 2 bên, loại trừ 2 chiều trong Discovery, Chat (`403 USER_BLOCKED`), và Random Call.
+    - `GET /api/v1/blocks`: Lấy danh sách người đã chặn kèm thông tin hiển thị và ảnh đại diện.
+    - `DELETE /api/v1/blocks/:blockedId`: Huỷ chặn người dùng.
+    - `POST /api/v1/reports`: Báo cáo vi phạm với các lý do (`nudity`, `harassment`, `minor`, `scam`, `spam`, `other`). Tự động khoá gọi ngẫu nhiên 24 giờ (`randomBannedUntil = NOW() + 24h`) nếu tài khoản nhận từ 3 báo cáo trở lên trong vòng 24 giờ.
+    - `POST /api/v1/age-verification/webhook`: Tiếp nhận webhook KYC xác minh tuổi với chữ ký bảo mật HMAC-SHA256 (`x-webhook-signature`), từ chối chữ ký sai (`401 INVALID_SIGNATURE`), cập nhật `ageVerified = true`, hoặc đình chỉ tài khoản (`status = 'suspended'`) nếu phát hiện dưới 18 tuổi.
+  - `AdminService` & `AdminController`:
+    - `GET /api/v1/admin/reports`: Danh sách báo cáo vi phạm, tự động gắn cờ `priority: 'urgent'` và ưu tiên đưa lên hàng đầu đối với các báo cáo có lý do `minor`.
+    - `POST /api/v1/admin/reports/:id/resolve`: Giải quyết báo cáo (`dismiss`, `warn`, `suspend`, `ban`), nếu `suspend`/`ban` sẽ cập nhật `status = 'suspended'`, thu hồi toàn bộ refresh tokens, và ghi vết kiểm toán vào bảng `admin_actions`.
+    - `POST /api/v1/admin/users/:id/suspend`: Đình chỉ hoặc mở khoá tài khoản trực tiếp, ghi log `admin_actions`.
+    - `GET /api/v1/admin/photos` & `POST /api/v1/admin/photos/:id/moderate`: Kiểm duyệt ảnh đại diện người dùng (`approved` / `rejected`).
+- **Frontend Web (`apps/web`)**:
+  - `src/components/ReportModal.tsx`: Hộp thoại báo cáo vi phạm chuẩn UI với 6 lý do vi phạm, nhãn ưu tiên xử lý cho `minor`, và ô nhập chi tiết bổ sung.
+  - `src/components/BlockButton.tsx`: Nút chặn người dùng kèm hộp thoại xác nhận cảnh báo huỷ tương hợp và ngăn liên lạc.
+  - `src/features/settings/BlockedUsersPage.tsx`: Màn hình danh sách người đã chặn tại route `/settings/blocked` kèm nút Bỏ chặn.
+  - `src/components/AdminRoute.tsx`: Route guard kiểm tra `user.role === 'admin'`, hiển thị màn hình 403 từ chối nếu không phải admin.
+  - `src/features/admin/AdminDashboardPage.tsx`: Trung tâm Quản trị tại route `/admin` gồm 3 tab: Báo cáo vi phạm (thẻ đỏ nhấp nháy cho báo cáo khẩn cấp `minor`, các nút hành động Bỏ qua/Cảnh cáo/Khoá/Cấm), Kiểm duyệt ảnh (lưới duyệt ảnh), và Quản lý tài khoản (khoá/mở khoá theo UUID).
+- **Kiểm thử Supertest bắt buộc (`apps/api/test/safety-admin.e2e-spec.ts`)**:
+  - Đã pass 100% (15/15 tests):
+    1. Từ chối tự chặn chính mình (400 CANNOT_BLOCK_SELF)
+    2. Chặn User B thành công và tự động unmatch
+    3. Lấy danh sách người đã chặn chứa User B
+    4. Chặn 2 chiều: User B không thể nhắn tin cho User A
+    5. Bỏ chặn User B thành công
+    6. Từ chối tự báo cáo chính mình (400 CANNOT_REPORT_SELF)
+    7. Tự động khoá Random Call 24h khi nhận 3 báo cáo trong 24h
+    8. User thường bị từ chối truy cập admin (403 FORBIDDEN)
+    9. Admin xem danh sách báo cáo, ưu tiên báo cáo lý do `minor` lên đầu
+    10. Admin resolve report với action `suspend` -> khoá tài khoản người vi phạm
+    11. Admin mở khoá tài khoản người dùng thành công
+    12. Admin xem ảnh pending và duyệt ảnh approved
+    13. Webhook từ chối sai chữ ký HMAC (401 INVALID_SIGNATURE)
+    14. Webhook xác minh độ tuổi thành công với HMAC hợp lệ
+    15. Webhook từ chối và đình chỉ tài khoản nếu phát hiện dưới 18 tuổi
+- **Tổng số tests e2e toàn hệ thống**: 64 tests (8 suites) đều pass tuyệt đối!
+
+### 2. Quyết định kỹ thuật quan trọng
+- **Bảo mật 2 chiều tuyệt đối (Two-Way Block Isolation)**: Thực thi loại trừ ở tầng cơ sở dữ liệu trên cả Discovery (`p.user_id NOT IN (blocks)`), Chat (`findFirst` OR `blocker/blocked`), và Random Matchmaking queue.
+- **Bảo vệ trẻ em và ưu tiên khẩn cấp (Child Safety Priority)**: Mọi báo cáo với lý do `minor` được hệ thống tự động gán cờ `urgent` và sắp xếp nổi bật trên cùng bảng điều khiển của Admin để kiểm duyệt viên can thiệp tức thì.
+- **Xác thực Webhook KYC bằng HMAC-SHA256**: Đảm bảo cổng tích hợp đối tác KYC (Persona/Stripe Identity) không thể bị giả mạo nhờ so sánh hash chữ ký secret `AGE_VERIFICATION_SECRET`.
+
+### 3. Lệnh để chạy và kiểm tra lại bước này
+```bash
+# 1. Chạy e2e tests cho An toàn & Quản trị
+pnpm --filter @meetcall/api test:e2e test/safety-admin.e2e-spec.ts
+
+# 2. Chạy toàn bộ e2e test suite (64 tests)
+pnpm --filter @meetcall/api test:e2e
+
+# 3. Build toàn bộ monorepo
+pnpm build
+```
+
+### 4. Bước kế tiếp
+- **Bước 9: Thông báo đẩy, cài đặt tài khoản, xuất dữ liệu GDPR & Xoá tài khoản (Notifications & Settings)**:
+  - Đăng ký Web Push subscription (`POST /api/v1/me/devices`, bảng `device_tokens`).
+  - Gửi thông báo đẩy khi có match mới, tin nhắn mới, hoặc cuộc gọi nhỡ.
+  - Soft-delete tài khoản (`DELETE /api/v1/me`), huỷ session, đổi trạng thái `deleted`, lên lịch hard-delete sau 7 ngày.
+  - Xuất dữ liệu cá nhân theo GDPR (`GET /api/v1/me/export`).
+  - Frontend: Service Worker Web Push (`public/sw.js`), trang `/settings` (thông báo, quyền riêng tư, xuất dữ liệu, xoá tài khoản), trang `/terms` và `/privacy`.
