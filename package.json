@@ -2,7 +2,7 @@
   "name": "meetcall-monorepo",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@12.16.1",
+  "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "concurrently -n \"API,WEB\" -c \"blue,magenta\" \"pnpm --filter @meetcall/api start:dev\" \"pnpm --filter @meetcall/web dev\"",
     "build": "pnpm --filter @meetcall/shared build && pnpm --filter @meetcall/api build && pnpm --filter @meetcall/web build",
