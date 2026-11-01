@@ -505,7 +505,53 @@ pnpm build
 ```
 
 ### 4. Bước kế tiếp
-- **Bước 10: Kiểm thử toàn diện và gia cố (Testing & Hardening)**:
-  - Rà soát lỗ hổng: `pnpm audit`, OWASP Top 10 checklist, bảo vệ AuthGuard trên toàn bộ endpoint.
-  - Playwright E2E tests kiểm tra các luồng người dùng chính: Đăng ký & Onboarding, Vuốt & Match, Chat realtime, Video call 1-1, Video call ngẫu nhiên.
-  - Script kiểm thử tải k6 (`scripts/k6/load-test.js`).
+- **Bước 10: Kiểm thử toàn diện và gia cố (Đã hoàn thành)**
+
+---
+
+## Bước 10: Kiểm thử toàn diện và gia cố (Testing & Hardening) (Đã hoàn thành)
+
+### 1. Đã làm
+- **Kiểm toán An ninh & OWASP Top 10**:
+  - `pnpm audit`: Rà soát dependencies toàn hệ thống.
+  - `docs/security-audit.md`: Tài liệu báo cáo kiểm toán an ninh chi tiết theo OWASP Top 10, phân tích cơ chế bảo vệ toạ độ GPS 5km, EXIF stripping của ảnh, và kiểm tra 18+ ở cả tầng DB lẫn tầng ứng dụng.
+- **Kiểm thử Giao diện Người dùng (Playwright E2E)**:
+  - Cấu hình Playwright `apps/web/playwright.config.ts` với fake media streams (fake mic & camera) và hỗ trợ chạy song song.
+  - 5 kịch bản kiểm thử luồng người dùng chính:
+    1. `apps/web/e2e/01-auth-onboarding.spec.ts`: Chặn người dưới 18 tuổi ngay tại form đăng ký, đăng ký 18+ thành công và đi qua 4 bước Onboarding.
+    2. `apps/web/e2e/02-discover-swipe.spec.ts`: Xem thẻ ứng viên với khoảng cách làm tròn 5km, vuốt bỏ qua (Pass), vuốt thích (Like), và hiển thị modal Chúc mừng khi tương hợp ("It's a Match!").
+    3. `apps/web/e2e/03-chat-realtime.spec.ts`: Mở phòng chat match, gửi tin nhắn, kiểm tra bộ lọc chống spam liên kết (> 2 links).
+    4. `apps/web/e2e/04-call-webrtc.spec.ts`: Bắt đầu cuộc gọi video 1-1, khởi tạo local video stream, đồng hồ cuộc gọi, và kết thúc cuộc gọi.
+    5. `apps/web/e2e/05-random-call.spec.ts`: Kiểm tra hộp thoại cam kết quy tắc cộng đồng 18+, radar tìm kiếm đối phương, và nút chuyển người lạ (Next).
+- **Kiểm thử Tải & Hiệu Năng (k6 Load Testing)**:
+  - `scripts/k6/load-test.js`: Kịch bản kiểm thử tải đa giai đoạn (ramp up 20 -> 50 -> 100 VUs) với các tiêu chuẩn kiểm thử khắt khe (`http_req_duration` p95 < 500ms, tỷ lệ lỗi < 1%), kiểm thử API Health, Auth login, PostGIS candidate discovery, Random queue eligibility, và Matches querying.
+- **Tài liệu kiểm thử toàn diện**:
+  - `docs/testing.md`: Hướng dẫn vận hành chi tiết cả 3 cấp độ kiểm thử (Supertest E2E, Playwright, k6).
+- **Tổng số tests e2e backend**: 71 tests (9 suites) đều pass tuyệt đối!
+
+### 2. Quyết định kỹ thuật quan trọng
+- **Tự động hoá MediaStream trong Headless Browser**: Cấu hình cờ Chromium `--use-fake-ui-for-media-stream` và `--use-fake-device-for-media-stream` cho phép Playwright chạy kiểm thử WebRTC video call tự động mà không bị chặn bởi pop-up xin quyền microphone/camera của hệ điều hành.
+- **Mô phỏng Tải Thực Tế với k6**: Kết hợp kiểm tra xác thực JWT động và truy vấn không gian PostGIS phức tạp (`ST_DWithin` + `ST_Distance`) nhằm bảo đảm cơ sở dữ liệu và Redis duy trì độ trễ p95 < 500ms dưới tải cao.
+
+### 3. Lệnh để chạy và kiểm tra lại bước này
+```bash
+# 1. Chạy e2e tests backend (71 tests)
+pnpm --filter @meetcall/api test:e2e
+
+# 2. Chạy Playwright E2E tests
+pnpm --filter @meetcall/web exec playwright test
+
+# 3. Chạy k6 load test
+k6 run scripts/k6/load-test.js
+
+# 4. Build toàn bộ monorepo
+pnpm build
+```
+
+### 4. Bước kế tiếp
+- **Bước 11: Triển khai Production (Docker, Caddy, CI/CD, Runbook)**:
+  - Multi-stage Dockerfile tối ưu hoá cho `apps/api` và `apps/web` (non-root user, alpine/slim base).
+  - `docker-compose.prod.yml`: Caddy (tự động cấu hình SSL/HTTPS qua Let's Encrypt), `api`, `postgres` (PostGIS), `redis`, `coturn` (STUN/TURN).
+  - Cấu hình biến môi trường production `.env.production.example`.
+  - Quy trình GitHub Actions CI/CD `.github/workflows/deploy.yml`.
+  - Tài liệu triển khai & vận hành production `docs/deploy.md` và `docs/runbook.md`.
