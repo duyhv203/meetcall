@@ -29,9 +29,28 @@ async function bootstrap(): Promise<void> {
   app.use(parseCookie());
 
   // CORS Configuration
-  const webOrigin = configService.get<string>('WEB_ORIGIN', 'http://localhost:5173');
+  const rawWebOrigin = configService.get<string>('WEB_ORIGIN', 'http://localhost:5173');
+  const allowedOrigins = rawWebOrigin
+    .split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
   app.enableCors({
-    origin: [webOrigin],
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!origin) return callback(null, true);
+      const cleanOrigin = origin.replace(/\/$/, '');
+      if (
+        allowedOrigins.includes(cleanOrigin) ||
+        cleanOrigin.endsWith('.netlify.app') ||
+        cleanOrigin.includes('localhost')
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
   });

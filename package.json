@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "concurrently -n \"API,WEB\" -c \"blue,magenta\" \"pnpm --filter @meetcall/api start:dev\" \"pnpm --filter @meetcall/web dev\"",
     "build": "pnpm --filter @meetcall/shared build && pnpm --filter @meetcall/api build && pnpm --filter @meetcall/web build",
+    "build:api": "pnpm --filter @meetcall/shared build && pnpm --filter @meetcall/api prisma:generate && pnpm --filter @meetcall/api build",
+    "start:api": "pnpm --filter @meetcall/api start:prod",
+    "deploy:db": "pnpm --filter @meetcall/api prisma:deploy",
     "lint": "pnpm --recursive run lint",
     "test": "pnpm --filter @meetcall/api test && pnpm --filter @meetcall/api test:e2e",
     "test:e2e": "pnpm --filter @meetcall/api test:e2e",
