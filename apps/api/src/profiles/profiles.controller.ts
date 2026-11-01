@@ -49,6 +49,7 @@ export class ProfilesController {
   }
 
   @Patch('profile')
+  @Put('profile')
   async updateProfile(
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdateProfileRequest,
@@ -57,14 +58,16 @@ export class ProfilesController {
   }
 
   @Put('preferences')
+  @Patch('preferences')
   async updatePreferences(
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdatePreferencesRequest,
-  ): Promise<{ success: boolean }> {
+  ) {
     return this.profilesService.updatePreferences(user.id, dto);
   }
 
   @Put('location')
+  @Patch('location')
   async updateLocation(
     @CurrentUser() user: AuthUser,
     @Body() dto: UpdateLocationRequest,
@@ -89,11 +92,14 @@ export class ProfilesController {
   }
 
   @Patch('photos/order')
+  @Put('photos/reorder')
+  @Patch('photos/reorder')
   async reorderPhotos(
     @CurrentUser() user: AuthUser,
-    @Body() dto: ReorderPhotosRequest,
+    @Body() dto: { ids?: string[]; photoIds?: string[] },
   ): Promise<PhotoData[]> {
-    return this.photosService.reorderPhotos(user.id, dto.ids);
+    const ids = dto.ids || dto.photoIds || [];
+    return this.photosService.reorderPhotos(user.id, ids);
   }
 
   @Delete('photos/:id')

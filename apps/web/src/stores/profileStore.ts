@@ -63,20 +63,27 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   updatePreferences: async (dto: UpdatePreferencesRequest) => {
-    const res = await api<{ success: boolean; preferences: PreferencesData }>('/me/preferences', {
+    const res = await api<{ success: boolean; preferences?: PreferencesData }>('/me/preferences', {
       method: 'PUT',
       body: JSON.stringify(dto),
     });
     const current = get().me;
+    const nextPrefs = res.preferences || {
+      userId: current?.user.id || '',
+      genderFilter: dto.genderFilter,
+      minAge: dto.minAge,
+      maxAge: dto.maxAge,
+      maxDistanceKm: dto.maxDistanceKm,
+    };
     if (current) {
       set({
         me: {
           ...current,
-          preferences: res.preferences,
+          preferences: nextPrefs,
         },
       });
     }
-    return res.preferences;
+    return nextPrefs;
   },
 
   updateLocation: async (dto: UpdateLocationRequest) => {
@@ -133,19 +140,20 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   },
 
   reorderPhotos: async (photoIds: string[]) => {
-    const res = await api<{ success: boolean; photos: PhotoData[] }>('/me/photos/reorder', {
-      method: 'PUT',
-      body: JSON.stringify({ photoIds }),
+    const res = await api<PhotoData[]>('/me/photos/order', {
+      method: 'PATCH',
+      body: JSON.stringify({ ids: photoIds }),
     });
     const current = get().me;
+    const nextPhotos = Array.isArray(res) ? res : (res as any)?.photos || [];
     if (current) {
       set({
         me: {
           ...current,
-          photos: res.photos,
+          photos: nextPhotos,
         },
       });
     }
-    return res.photos;
+    return nextPhotos;
   },
 }));

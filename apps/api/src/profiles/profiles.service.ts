@@ -9,6 +9,7 @@ import type {
   ExportDataResponse,
   MeResponse,
   PhotoData,
+  PreferencesData,
   ProfileData,
   UpdateLocationRequest,
   UpdatePreferencesRequest,
@@ -146,7 +147,7 @@ export class ProfilesService {
   async updatePreferences(
     userId: string,
     dto: UpdatePreferencesRequest,
-  ): Promise<{ success: boolean }> {
+  ): Promise<{ success: boolean; preferences: PreferencesData }> {
     if (dto.minAge < 18) {
       throw new BadRequestException({
         code: 'MIN_AGE_TOO_LOW',
@@ -168,7 +169,7 @@ export class ProfilesService {
       });
     }
 
-    await this.prisma.preferences.upsert({
+    const pref = await this.prisma.preferences.upsert({
       where: { userId },
       create: {
         userId,
@@ -185,7 +186,16 @@ export class ProfilesService {
       },
     });
 
-    return { success: true };
+    return {
+      success: true,
+      preferences: {
+        userId: pref.userId,
+        genderFilter: pref.genderFilter,
+        minAge: pref.minAge,
+        maxAge: pref.maxAge,
+        maxDistanceKm: pref.maxDistanceKm,
+      },
+    };
   }
 
   async updateLocation(
