@@ -37,7 +37,11 @@ export function HomePage() {
     await logout();
   };
 
-  const mainPhoto = me?.photos?.[0]?.url;
+  const [avatarError, setAvatarError] = useState(false);
+  const [bannerAvatarError, setBannerAvatarError] = useState(false);
+
+  const rawPhoto = me?.photos?.[0]?.url;
+  const mainPhoto = rawPhoto ? rawPhoto.replace(/^http:\/\/localhost:3000/, '') : null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -88,10 +92,11 @@ export function HomePage() {
             to="/settings/profile"
             className="flex items-center gap-2.5 p-1.5 rounded-xl hover:bg-slate-800/60 transition"
           >
-            {mainPhoto ? (
+            {mainPhoto && !avatarError ? (
               <img
                 src={mainPhoto}
                 alt="Avatar"
+                onError={() => setAvatarError(true)}
                 className="w-8 h-8 rounded-full object-cover border border-rose-500/40"
               />
             ) : (
@@ -126,10 +131,11 @@ export function HomePage() {
         <div className="p-6 bg-gradient-to-r from-slate-900/90 via-slate-900/70 to-slate-900/90 border border-slate-800 rounded-3xl shadow-xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              {mainPhoto ? (
+              {mainPhoto && !bannerAvatarError ? (
                 <img
                   src={mainPhoto}
                   alt="Avatar"
+                  onError={() => setBannerAvatarError(true)}
                   className="w-16 h-16 rounded-2xl object-cover border-2 border-rose-500 shadow-md shadow-rose-500/20"
                 />
               ) : (

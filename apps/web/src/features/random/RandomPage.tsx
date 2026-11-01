@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -10,9 +10,13 @@ import {
   Sparkles,
   Video,
   VideoOff,
+  Crown,
+  X,
+  Globe,
 } from 'lucide-react';
-import { useRandomStore } from '../../stores/randomStore.js';
+import { useRandomStore, type RandomFilterOptions } from '../../stores/randomStore.js';
 import { connectSocket } from '../../lib/socket.js';
+import { api } from '../../lib/api.js';
 import type { RandomPairedPayload } from '@meetcall/shared';
 
 export function RandomPage() {
@@ -39,10 +43,52 @@ export function RandomPage() {
 
   const [hasAgreedRules, setHasAgreedRules] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(true);
+
+  // Filter settings
+  const [filterMode, setFilterMode] = useState<'free' | 'vip'>('free');
   const [preferredGender, setPreferredGender] = useState('other');
+  const [ageRange, setAgeRange] = useState('all');
+  const [preferredCity, setPreferredCity] = useState('');
+
+  // VIP State
+  const [isVip, setIsVip] = useState(false);
+  const [showVipModal, setShowVipModal] = useState(false);
+  const [vipSuccess, setVipSuccess] = useState('');
+  const [isVipLoading, setIsVipLoading] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Check VIP status on mount
+  useEffect(() => {
+    api<{ isVip: boolean }>('/random/vip-status')
+      .then((res) => setIsVip(res.isVip))
+      .catch(() => {});
+  }, []);
+
+  const getActiveFilterOptions = useCallback((): RandomFilterOptions => {
+    if (filterMode === 'free') {
+      return { preferredGender: 'other' };
+    }
+    let minAge: number | undefined;
+    let maxAge: number | undefined;
+    if (ageRange === '18-22') {
+      minAge = 18;
+      maxAge = 22;
+    } else if (ageRange === '23-28') {
+      minAge = 23;
+      maxAge = 28;
+    } else if (ageRange === '29-35') {
+      minAge = 29;
+      maxAge = 35;
+    }
+    return {
+      preferredGender,
+      minAge,
+      maxAge,
+      preferredCity: preferredCity || undefined,
+    };
+  }, [filterMode, preferredGender, ageRange, preferredCity]);
 
   // Setup Socket listeners for random calls
   useEffect(() => {
@@ -85,17 +131,41 @@ export function RandomPage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space' && pairingStatus === 'connected') {
         e.preventDefault();
-        void nextPartner(preferredGender);
+        void nextPartner(getActiveFilterOptions());
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [pairingStatus, nextPartner, preferredGender]);
+  }, [pairingStatus, nextPartner, getActiveFilterOptions]);
 
   const handleStart = async () => {
     if (!hasAgreedRules) return;
+    if (filterMode === 'vip' && !isVip) {
+      setShowVipModal(true);
+      return;
+    }
     setShowRulesModal(false);
-    await startRandomCall(preferredGender);
+    await startRandomCall(getActiveFilterOptions());
+  };
+
+  const handleUpgradeVip = async (packageId: string) => {
+    try {
+      setIsVipLoading(true);
+      const res = await api<{ success: boolean; message: string; isVip: boolean }>('/random/vip-upgrade', {
+        method: 'POST',
+        body: JSON.stringify({ packageId }),
+      });
+      setIsVip(res.isVip);
+      setVipSuccess(res.message);
+      setTimeout(() => {
+        setVipSuccess('');
+        setShowVipModal(false);
+      }, 1500);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Nâng cấp VIP thất bại');
+    } finally {
+      setIsVipLoading(false);
+    }
   };
 
   const handleLeave = () => {
@@ -259,31 +329,191 @@ export function RandomPage() {
               </p>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-2">
-                Bộ lọc giới tính mong muốn:
+            {/* MODE SELECTION: FREE VS VIP FILTER */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-200">
+                Lựa chọn chế độ gọi:
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'other', label: 'Tất cả' },
-                  { id: 'female', label: 'Nữ' },
-                  { id: 'male', label: 'Nam' },
-                ].map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setPreferredGender(opt.id)}
-                    className={`py-2 rounded-xl text-xs font-semibold border transition ${
-                      preferredGender === opt.id
-                        ? 'bg-rose-500/20 border-rose-500 text-rose-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterMode('free');
+                    setPreferredGender('other');
+                    setAgeRange('all');
+                    setPreferredCity('');
+                  }}
+                  className={`p-3 rounded-2xl border text-left transition relative ${
+                    filterMode === 'free'
+                      ? 'bg-rose-500/15 border-rose-500 text-white'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-xs flex items-center gap-1.5 text-white">
+                      <Globe className="w-4 h-4 text-emerald-400" />
+                      Ngẫu nhiên
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
+                      FREE
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    Miễn phí 100% · Ghép đôi nhanh toàn quốc
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterMode('vip');
+                    if (!isVip) {
+                      setShowVipModal(true);
+                    }
+                  }}
+                  className={`p-3 rounded-2xl border text-left transition relative ${
+                    filterMode === 'vip'
+                      ? 'bg-amber-500/15 border-amber-500 text-white'
+                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-xs flex items-center gap-1.5 text-amber-300">
+                      <Crown className="w-4 h-4 text-amber-400" />
+                      Lọc VIP
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold">
+                      {isVip ? 'ĐÃ MỞ' : 'TRẢ PHÍ'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-tight">
+                    Chọn riêng Nữ, độ tuổi và khu vực
+                  </p>
+                </button>
               </div>
             </div>
+
+            {/* VIP FILTERS SECTION */}
+            {filterMode === 'vip' && (
+              <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/30 space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <Crown className="w-3.5 h-3.5" />
+                    Bộ lọc theo yêu cầu riêng (VIP)
+                  </span>
+                  {!isVip && (
+                    <button
+                      type="button"
+                      onClick={() => setShowVipModal(true)}
+                      className="text-[10px] text-amber-400 font-bold underline"
+                    >
+                      Kích hoạt VIP
+                    </button>
+                  )}
+                </div>
+
+                {/* 1. Gender Filter */}
+                <div>
+                  <label className="block text-[11px] text-slate-300 mb-1.5 font-medium">
+                    Giới tính đối phương:
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'female', label: 'Chỉ Nữ 👩' },
+                      { id: 'male', label: 'Chỉ Nam 👨' },
+                      { id: 'other', label: 'Tất cả' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          if (!isVip) {
+                            setShowVipModal(true);
+                            return;
+                          }
+                          setPreferredGender(opt.id);
+                        }}
+                        className={`py-1.5 rounded-xl text-xs font-semibold border transition ${
+                          preferredGender === opt.id
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-200'
+                            : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Age Filter */}
+                <div>
+                  <label className="block text-[11px] text-slate-300 mb-1.5 font-medium">
+                    Độ tuổi mong muốn:
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { id: 'all', label: 'Tất cả' },
+                      { id: '18-22', label: '18 - 22' },
+                      { id: '23-28', label: '23 - 28' },
+                      { id: '29-35', label: '29 - 35' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          if (!isVip) {
+                            setShowVipModal(true);
+                            return;
+                          }
+                          setAgeRange(opt.id);
+                        }}
+                        className={`py-1.5 rounded-xl text-xs font-semibold border transition ${
+                          ageRange === opt.id
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-200'
+                            : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Region Filter */}
+                <div>
+                  <label className="block text-[11px] text-slate-300 mb-1.5 font-medium">
+                    Khu vực / Tỉnh thành:
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { id: '', label: 'Toàn quốc' },
+                      { id: 'Hà Nội', label: 'Hà Nội' },
+                      { id: 'TP. Hồ Chí Minh', label: 'TP.HCM' },
+                      { id: 'Đà Nẵng', label: 'Đà Nẵng' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          if (!isVip) {
+                            setShowVipModal(true);
+                            return;
+                          }
+                          setPreferredCity(opt.id);
+                        }}
+                        className={`py-1.5 rounded-xl text-xs font-semibold border transition ${
+                          preferredCity === opt.id
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-200'
+                            : 'bg-slate-950 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <label className="flex items-start gap-3 cursor-pointer">
               <input
@@ -343,6 +573,86 @@ export function RandomPage() {
             >
               Tiếp tục trò chuyện
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* VIP VIDEO CALL MODAL */}
+      {showVipModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="max-w-md w-full bg-slate-900 border border-amber-500/40 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl relative">
+            <button
+              onClick={() => setShowVipModal(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800/60"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 rounded-full bg-amber-500/15 text-amber-400 mx-auto flex items-center justify-center border border-amber-500/30">
+                <Crown className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Nâng cấp VIP Video Call</h2>
+              <p className="text-xs text-slate-400">
+                Gọi ngẫu nhiên mặc định hoàn toàn <strong>Miễn phí</strong>. Để chọn lọc riêng người gọi theo <strong>Nữ</strong>, <strong>độ tuổi</strong> và <strong>khu vực</strong>, vui lòng nâng cấp gói VIP!
+              </p>
+            </div>
+
+            {vipSuccess && (
+              <div className="p-3 bg-emerald-950/80 border border-emerald-500 text-emerald-200 text-xs rounded-xl text-center">
+                {vipSuccess}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {[
+                {
+                  id: 'vip_1day',
+                  title: 'Gói VIP 1 Ngày',
+                  desc: 'Trải nghiệm toàn bộ bộ lọc trong 24 giờ',
+                  price: '19.000 đ',
+                  badge: 'Thử nghiệm',
+                },
+                {
+                  id: 'vip_1month',
+                  title: 'Gói VIP 1 Tháng',
+                  desc: 'Không giới hạn lọc Nữ, tuổi và khu vực trong 30 ngày',
+                  price: '99.000 đ',
+                  badge: 'Tiết kiệm 80%',
+                  highlight: true,
+                },
+              ].map((pkg) => (
+                <div
+                  key={pkg.id}
+                  className={`p-4 rounded-2xl border transition flex items-center justify-between cursor-pointer ${
+                    pkg.highlight
+                      ? 'bg-amber-500/10 border-amber-500/60 hover:bg-amber-500/20'
+                      : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                  }`}
+                  onClick={() => void handleUpgradeVip(pkg.id)}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-white">{pkg.title}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
+                        {pkg.badge}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">{pkg.desc}</p>
+                  </div>
+                  <button
+                    disabled={isVipLoading}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 font-bold text-xs text-white shadow transition"
+                  >
+                    {pkg.price}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[11px] text-slate-500 text-center">
+              💡 Mô phỏng thanh toán VIP: Bấm vào gói trên để kích hoạt VIP ngay lập tức mà không cần thẻ tín dụng thật!
+            </p>
           </div>
         </div>
       )}

@@ -31,6 +31,20 @@ export class RandomController {
     };
   }
 
+  @Get('random/vip-status')
+  async getVipStatus(@CurrentUser() user: AuthUser) {
+    return this.randomService.getVipStatus(user.id);
+  }
+
+  @Post('random/vip-upgrade')
+  @HttpCode(HttpStatus.OK)
+  async upgradeVip(
+    @CurrentUser() user: AuthUser,
+    @Body() body: { packageId?: string },
+  ) {
+    return this.randomService.upgradeVip(user.id, body?.packageId || 'vip_1month');
+  }
+
   @Post('calls/:id/friend-vote')
   @HttpCode(HttpStatus.OK)
   async voteFriend(

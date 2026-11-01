@@ -8,6 +8,13 @@ import type {
 import { api } from '../lib/api.js';
 import { getSocket } from '../lib/socket.js';
 
+export interface RandomFilterOptions {
+  preferredGender?: string;
+  minAge?: number;
+  maxAge?: number;
+  preferredCity?: string;
+}
+
 interface RandomState {
   pairingStatus: 'idle' | 'waiting' | 'connected';
   callId: string | null;
@@ -21,8 +28,8 @@ interface RandomState {
   isCameraOff: boolean;
   error: string | null;
 
-  startRandomCall: (preferredGender?: string) => Promise<void>;
-  nextPartner: (preferredGender?: string) => Promise<void>;
+  startRandomCall: (filterOptions?: RandomFilterOptions | string) => Promise<void>;
+  nextPartner: (filterOptions?: RandomFilterOptions | string) => Promise<void>;
   leaveRandomCall: () => void;
   voteFriend: () => Promise<void>;
   toggleMic: () => void;
@@ -47,7 +54,7 @@ export const useRandomStore = create<RandomState>((set, get) => ({
   isCameraOff: false,
   error: null,
 
-  startRandomCall: async (preferredGender?: string) => {
+  startRandomCall: async (filterOptions?: RandomFilterOptions | string) => {
     set({
       pairingStatus: 'waiting',
       partner: null,
@@ -70,7 +77,10 @@ export const useRandomStore = create<RandomState>((set, get) => ({
 
       // 2. Emit random:join
       const socket = getSocket();
-      socket.emit('random:join', { preferredGender });
+      const payload = typeof filterOptions === 'string'
+        ? { preferredGender: filterOptions }
+        : filterOptions || {};
+      socket.emit('random:join', payload);
     } catch (err) {
       set({
         pairingStatus: 'idle',
@@ -144,7 +154,7 @@ export const useRandomStore = create<RandomState>((set, get) => ({
     }
   },
 
-  nextPartner: async (preferredGender?: string) => {
+  nextPartner: async (filterOptions?: RandomFilterOptions | string) => {
     const { callId } = get();
     const socket = getSocket();
 
@@ -164,7 +174,10 @@ export const useRandomStore = create<RandomState>((set, get) => ({
       error: null,
     });
 
-    socket.emit('random:next', { callId, preferredGender });
+    const payload = typeof filterOptions === 'string'
+      ? { callId, preferredGender: filterOptions }
+      : { callId, ...(filterOptions || {}) };
+    socket.emit('random:next', payload);
   },
 
   onPartnerLeft: () => {

@@ -93,15 +93,64 @@ export class RandomService {
     };
   }
 
+  async getVipStatus(userId: string) {
+    const redis = this.redisService.getClient();
+    const vipVal = await redis.get(`user:vip:videocall:${userId}`);
+    return {
+      isVip: Boolean(vipVal),
+      expiresAt: vipVal || null,
+    };
+  }
+
+  async upgradeVip(userId: string, packageId = 'vip_1month') {
+    const redis = this.redisService.getClient();
+    const durationDays = packageId === 'vip_1day' ? 1 : 30;
+    const packageName = packageId === 'vip_1day' ? 'Gói VIP 1 Ngày' : 'Gói VIP 1 Tháng';
+    const expiresAt = new Date(Date.now() + durationDays * 24 * 3600 * 1000).toISOString();
+
+    await redis.set(`user:vip:videocall:${userId}`, expiresAt, 'EX', durationDays * 24 * 3600);
+
+    return {
+      success: true,
+      message: `Kích hoạt thành công ${packageName}!`,
+      isVip: true,
+      expiresAt,
+    };
+  }
+
   async joinQueue(
     userId: string,
     socketId: string,
     preferredGender?: string,
+    minAge?: number,
+    maxAge?: number,
+    preferredCity?: string,
   ): Promise<{ paired: boolean; callId?: string }> {
     const user = await this.assertEligibleForRandom(userId);
 
-    // Rate limit check: 200 next/hour
+    // Paid VIP filter check
+    const isFiltered = Boolean(
+      (preferredGender && preferredGender !== 'other') ||
+      (minAge && minAge > 18) ||
+      (maxAge && maxAge < 60) ||
+      preferredCity,
+    );
+
     const redis = this.redisService.getClient();
+    if (isFiltered) {
+      const isVip = await redis.get(`user:vip:videocall:${userId}`);
+      if (!isVip) {
+        throw new HttpException(
+          {
+            code: 'VIP_FILTER_REQUIRED',
+            message: 'Tính năng chọn riêng giới tính, độ tuổi và khu vực là tính năng nâng cao (trả phí). Vui lòng nâng cấp gói VIP để sử dụng.',
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
+
+    // Rate limit check: 200 next/hour
     const rateKey = `rate:random:next:${userId}`;
     const nextCount = await redis.get(rateKey);
 

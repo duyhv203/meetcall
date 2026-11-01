@@ -109,8 +109,9 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       }),
     });
 
-    // 2. Direct upload file binary to uploadUrl
-    const uploadRes = await fetch(uploadUrl, {
+    // 2. Direct upload file binary to uploadUrl (normalize localhost:3000 to proxy path)
+    const normalizedUploadUrl = uploadUrl.replace(/^http:\/\/localhost:3000/, '');
+    const uploadRes = await fetch(normalizedUploadUrl, {
       method: 'PUT',
       headers: {
         'Content-Type': file.type || 'image/jpeg',

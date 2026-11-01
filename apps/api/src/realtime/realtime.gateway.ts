@@ -185,15 +185,31 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage('random:join')
   async handleRandomJoin(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data?: { preferredGender?: string },
+    @MessageBody()
+    data?: {
+      preferredGender?: string;
+      minAge?: number;
+      maxAge?: number;
+      preferredCity?: string;
+    },
   ): Promise<{ paired: boolean; error?: string }> {
     const userId = client.data.userId;
     if (!userId) return { paired: false, error: 'UNAUTHORIZED' };
     try {
-      const res = await this.randomService.joinQueue(userId, client.id, data?.preferredGender);
+      const res = await this.randomService.joinQueue(
+        userId,
+        client.id,
+        data?.preferredGender,
+        data?.minAge,
+        data?.maxAge,
+        data?.preferredCity,
+      );
       return res;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Join random queue failed';
+      const resp = (err as any)?.response || {};
+      const message = resp.message || (err instanceof Error ? err.message : 'Join random queue failed');
+      const code = resp.code || 'ERROR';
+      client.emit('random:error', { code, message });
       return { paired: false, error: message };
     }
   }
@@ -201,7 +217,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @SubscribeMessage('random:next')
   async handleRandomNext(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { callId?: string; preferredGender?: string },
+    @MessageBody()
+    data: {
+      callId?: string;
+      preferredGender?: string;
+      minAge?: number;
+      maxAge?: number;
+      preferredCity?: string;
+    },
   ): Promise<{ paired: boolean; error?: string }> {
     const userId = client.data.userId;
     if (!userId) return { paired: false, error: 'UNAUTHORIZED' };
@@ -209,9 +232,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       if (data.callId) {
         await this.randomService.skipCall(userId, data.callId);
       }
-      return await this.randomService.joinQueue(userId, client.id, data.preferredGender);
+      return await this.randomService.joinQueue(
+        userId,
+        client.id,
+        data.preferredGender,
+        data.minAge,
+        data.maxAge,
+        data.preferredCity,
+      );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Next random failed';
+      const resp = (err as any)?.response || {};
+      const message = resp.message || (err instanceof Error ? err.message : 'Next random failed');
+      const code = resp.code || 'ERROR';
+      client.emit('random:error', { code, message });
       return { paired: false, error: message };
     }
   }

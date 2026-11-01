@@ -25,6 +25,72 @@ export class SwipesService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  async getQuota(swiperId: string) {
+    const swiper = await this.prisma.user.findUnique({
+      where: { id: swiperId },
+      include: {
+        profile: true,
+        photos: true,
+      },
+    });
+
+    const isProfileComplete = Boolean(
+      swiper?.profile?.displayName &&
+      swiper?.profile?.city,
+    );
+    const photoCount = swiper?.photos?.length || 0;
+    const isUnlocked = Boolean(isProfileComplete && photoCount >= 3);
+
+    const redis = this.redisService.getClient();
+    const [usedStr, purchasedStr] = await Promise.all([
+      redis.get(`swipes:used:${swiperId}`),
+      redis.get(`swipes:purchased:${swiperId}`),
+    ]);
+
+    const usedSwipes = usedStr ? parseInt(usedStr, 10) : 0;
+    const purchasedSwipes = purchasedStr ? parseInt(purchasedStr, 10) : 0;
+    const totalAllowed = 20 + purchasedSwipes;
+    const remainingSwipes = Math.max(0, totalAllowed - usedSwipes);
+
+    return {
+      isUnlocked,
+      photosCount: photoCount,
+      requiredPhotos: 3,
+      isProfileComplete,
+      freeQuota: 20,
+      usedSwipes,
+      purchasedSwipes,
+      remainingSwipes,
+    };
+  }
+
+  async topup(swiperId: string, packageId: string) {
+    let addedSwipes = 20;
+    let packageName = 'Gói 20 lượt quẹt';
+
+    if (packageId === 'swipe_50') {
+      addedSwipes = 50;
+      packageName = 'Gói 50 lượt quẹt';
+    } else if (packageId === 'swipe_100') {
+      addedSwipes = 100;
+      packageName = 'Gói 100 lượt quẹt';
+    } else if (packageId === 'swipe_unlimited') {
+      addedSwipes = 9999;
+      packageName = 'Gói VIP Không giới hạn';
+    }
+
+    const redis = this.redisService.getClient();
+    await redis.incrby(`swipes:purchased:${swiperId}`, addedSwipes);
+
+    const quota = await this.getQuota(swiperId);
+    return {
+      success: true,
+      message: `Nạp thành công ${packageName}!`,
+      addedSwipes,
+      quota,
+    };
+  }
+
   async swipe(swiperId: string, dto: SwipeRequest): Promise<SwipeResponse> {
     if (swiperId === dto.targetUserId) {
       throw new BadRequestException({
@@ -38,6 +104,56 @@ export class SwipesService {
         code: 'INVALID_ACTION',
         message: 'Hành động phải là like hoặc pass.',
       });
+    }
+
+    // 1. Check swiper profile & photos requirement (>= 3 photos & complete profile)
+    const swiper = await this.prisma.user.findUnique({
+      where: { id: swiperId },
+      include: {
+        profile: true,
+        photos: true,
+      },
+    });
+
+    const isProfileComplete = Boolean(
+      swiper?.profile?.displayName &&
+      swiper?.profile?.city,
+    );
+    const photoCount = swiper?.photos?.length || 0;
+
+    if (!isProfileComplete || photoCount < 3) {
+      throw new BadRequestException({
+        code: 'SWIPES_LOCKED_REQUIRE_3_PHOTOS',
+        message: 'Bạn cần điền đầy đủ thông tin và đăng từ 3 ảnh trở lên để mở khóa 20 lượt quẹt miễn phí.',
+        photosCount: photoCount,
+        requiredPhotos: 3,
+        isProfileComplete,
+      });
+    }
+
+    // 2. Check 20 swipes quota + purchased swipes
+    const redis = this.redisService.getClient();
+    const usedKey = `swipes:used:${swiperId}`;
+    const purchasedKey = `swipes:purchased:${swiperId}`;
+
+    const [usedStr, purchasedStr] = await Promise.all([
+      redis.get(usedKey),
+      redis.get(purchasedKey),
+    ]);
+
+    const usedSwipes = usedStr ? parseInt(usedStr, 10) : 0;
+    const purchasedSwipes = purchasedStr ? parseInt(purchasedStr, 10) : 0;
+    const totalAllowed = 20 + purchasedSwipes;
+
+    if (usedSwipes >= totalAllowed) {
+      throw new HttpException(
+        {
+          code: 'SWIPE_QUOTA_EXCEEDED',
+          message: 'Bạn đã sử dụng hết 20 lượt quẹt miễn phí. Vui lòng nạp thêm lượt quẹt để tiếp tục.',
+          remainingSwipes: 0,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
     }
 
     // Target user must exist and be active
@@ -84,7 +200,7 @@ export class SwipesService {
     }
 
     // Atomic transaction: record swipe, check reciprocal like, create match
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. Record swipe (upsert to handle any retry)
       await tx.swipe.upsert({
         where: {
@@ -189,5 +305,8 @@ export class SwipesService {
         },
       };
     });
+
+    await redis.incr(`swipes:used:${swiperId}`);
+    return result;
   }
 }
