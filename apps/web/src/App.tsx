@@ -11,6 +11,8 @@ import { ProfileSettingsPage } from './features/settings/ProfileSettingsPage.js'
 import { DiscoverPage } from './features/discover/DiscoverPage.js';
 import { MatchesPage } from './features/matches/MatchesPage.js';
 import { ChatPage } from './features/chat/ChatPage.js';
+import { CallPage } from './features/calls/CallPage.js';
+import { IncomingCallModal } from './components/IncomingCallModal.js';
 import { ProtectedRoute } from './components/ProtectedRoute.js';
 
 export function App() {
@@ -33,6 +35,7 @@ export function App() {
 
   return (
     <BrowserRouter>
+      <IncomingCallModal />
       <Routes>
         {/* Public Auth Routes */}
         <Route path="/login" element={<LoginPage />} />
@@ -48,6 +51,8 @@ export function App() {
           <Route path="/discover" element={<DiscoverPage />} />
           <Route path="/matches" element={<MatchesPage />} />
           <Route path="/chat/:matchId" element={<ChatPage />} />
+          <Route path="/call/:matchId" element={<CallPage />} />
+          <Route path="/call" element={<CallPage />} />
         </Route>
 
         {/* Fallback */}

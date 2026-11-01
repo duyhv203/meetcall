@@ -13,6 +13,8 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service.js';
 import { ChatService } from '../chat/chat.service.js';
+import { CallsService } from '../calls/calls.service.js';
+import type { CallEndReason } from '@prisma/client';
 
 interface JwtPayload {
   sub: string;
@@ -38,6 +40,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly redisService: RedisService,
     @Inject(forwardRef(() => ChatService))
     private readonly chatService: ChatService,
+    @Inject(forwardRef(() => CallsService))
+    private readonly callsService: CallsService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -127,6 +131,47 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (!userId) return { success: false };
     const res = await this.chatService.markAsRead(userId, data.matchId);
     return { success: res.success };
+  }
+
+  @SubscribeMessage('call:accept')
+  async handleCallAccept(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { callId: string },
+  ): Promise<{ success: boolean }> {
+    const userId = client.data.userId;
+    if (!userId) return { success: false };
+    return this.callsService.acceptCall(userId, data.callId);
+  }
+
+  @SubscribeMessage('call:decline')
+  async handleCallDecline(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { callId: string },
+  ): Promise<{ success: boolean }> {
+    const userId = client.data.userId;
+    if (!userId) return { success: false };
+    return this.callsService.declineCall(userId, data.callId);
+  }
+
+  @SubscribeMessage('call:end')
+  async handleCallEnd(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { callId: string; reason?: CallEndReason },
+  ): Promise<{ success: boolean }> {
+    const userId = client.data.userId;
+    if (!userId) return { success: false };
+    await this.callsService.endCall(userId, data.callId, data.reason);
+    return { success: true };
+  }
+
+  @SubscribeMessage('rtc:signal')
+  handleRtcSignal(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { callId: string; targetUserId: string; signal: unknown },
+  ): void {
+    const userId = client.data.userId;
+    if (!userId) return;
+    this.callsService.forwardSignal(userId, data.callId, data.targetUserId, data.signal);
   }
 
   emitToUser(userId: string, event: string, data: unknown): void {

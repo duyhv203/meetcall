@@ -3,3 +3,4 @@ export * from './auth.dto.js';
 export * from './profile.dto.js';
 export * from './discovery.dto.js';
 export * from './chat.dto.js';
+export * from './call.dto.js';

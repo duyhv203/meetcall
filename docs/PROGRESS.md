@@ -275,5 +275,49 @@ pnpm --filter @meetcall/api test:e2e
 pnpm build
 ```
 
+---
+
+## Bước 6: Gọi video giữa 2 người đã match & Cấu hình TURN (Đã hoàn thành)
+
+### 1. Đã làm
+- **Shared Types & DTOs**:
+  - `packages/shared/src/call.dto.ts`: `RtcIceServer`, `IceServersResponse`, `InitiateCallRequest`, `InitiateCallResponse`, `EndCallRequest`, `CallIncomingPayload`, `RtcSignalPayload`.
+- **Hạ tầng Coturn STUN / TURN Server**:
+  - `infra/coturn/turnserver.conf`: Cấu hình coturn với cơ chế xác thực ngắn hạn `use-auth-secret`, `static-auth-secret`, realm `meetcall.local`, cổng UDP/TCP 3478, TLS 5349, dải port relay 49152-65535, chống loopback và multicast abuse.
+  - `docs/turn.md`: Tài liệu chi tiết hướng dẫn vận hành STUN/TURN, cơ chế NAT Traversal và triển khai qua Docker.
+- **Backend Calls Module (`apps/api`)**:
+  - `CallsService`:
+    - `GET /api/v1/calls/ice-servers`: Sinh thông tin STUN và TURN credentials động sử dụng HMAC-SHA1 (`username = timestamp:userId`, `password = Base64(HMAC-SHA1(username, secret))`, TTL 24 giờ).
+    - `POST /api/v1/calls/initiate`: Khởi tạo cuộc gọi match, kiểm tra người dùng bận máy (`409 USER_BUSY`), lưu bản ghi bảng `calls`, hẹn giờ 30 giây tự động huỷ nếu đối phương không trả lời (`endReason = 'missed'`).
+    - `POST /api/v1/calls/:id/accept`: Nhận cuộc gọi, huỷ timer 30s, cập nhật `started_at = NOW()`.
+    - `POST /api/v1/calls/:id/decline`: Từ chối cuộc gọi, cập nhật `endReason = 'declined'`.
+    - `POST /api/v1/calls/:id/end`: Kết thúc cuộc gọi, tính toán chính xác thời lượng đàm thoại (`durationSeconds`).
+    - `forwardSignal`: Chuyển tiếp gói tin WebRTC SDP Offer/Answer và ICE Candidate, thực thi giới hạn kích thước payload tối đa 16 KB chống tấn công tràn bộ nhớ (`400 SIGNAL_TOO_LARGE`).
+  - `RealtimeGateway`:
+    - Đón nhận và điều phối các sự kiện signaling: `call:accept`, `call:decline`, `call:end`, `rtc:signal`.
+- **Frontend Web (`apps/web`)**:
+  - `src/stores/callStore.ts`: Quản lý `RTCPeerConnection`, `localStream`, `remoteStream`, đệm ICE candidate (`pendingCandidates`), bật/tắt mic/camera, dọn dẹp dừng stream (`track.stop()`) khi gác máy.
+  - `src/components/IncomingCallModal.tsx`: Hộp thoại cuộc gọi đến toàn cục kèm chuông báo synth audio (Web Audio API), hiển thị avatar/tên caller và nút Nhận/Từ chối.
+  - `src/features/calls/CallPage.tsx`: Màn hình Video Call toàn màn hình, remote video lớn, local video dạng PiP ở góc, đồng hồ đếm thời lượng gọi, thanh điều khiển nổi (Bật/Tắt Mic, Camera, Kết thúc cuộc gọi).
+- **Kiểm thử Supertest bắt buộc (`apps/api/test/calls.e2e-spec.ts`)**:
+  - Đã pass 100% (7/7 tests): sinh TURN credentials đúng công thức HMAC-SHA1, khởi tạo cuộc gọi match, chặn người ngoài match (403), kiểm tra bận máy (409 USER_BUSY), nhận cuộc gọi cập nhật `startedAt`, kết thúc cuộc gọi tính thời lượng, và từ chối signal > 16 KB.
+
+### 2. Quyết định kỹ thuật quan trọng
+- **Bảo mật TURN Ephemeral Credentials**: Áp dụng chuẩn RFC 5766 sinh username và password theo thuật toán HMAC-SHA1 thời hạn 24 giờ, tránh việc lộ mật khẩu TURN server tĩnh ra client.
+- **Quản lý tài nguyên MediaStream**: Triệt để lặp qua tất cả tracks của `MediaStream` và gọi `track.stop()` ngay khi cuộc gọi kết thúc nhằm giải phóng camera/microphone của thiết bị và tắt đèn báo phần cứng.
+- **Chống DoS Signaling**: Giới hạn payload của các gói tin signaling (SDP và ICE candidates) không được vượt quá 16 KB.
+
+### 3. Lệnh để chạy và kiểm tra lại bước này
+```bash
+# 1. Chạy e2e tests cho Gọi Video & WebRTC
+pnpm --filter @meetcall/api test:e2e test/calls.e2e-spec.ts
+
+# 2. Chạy toàn bộ e2e test suite (42 tests)
+pnpm --filter @meetcall/api test:e2e
+
+# 3. Build toàn bộ monorepo
+pnpm build
+```
+
 ### 4. Bước kế tiếp
-- **Bước 6: Gọi video giữa 2 người đã match & cấu hình TURN**: Tích hợp WebRTC Peer-to-Peer, Coturn server STUN/TURN, sinh credentials HMAC-SHA1 ngắn hạn, signaling handshake qua Socket.IO (`call:invite`, `call:accept`, `call:decline`, `call:end`, `rtc:signal`), timeout 30s tự động chuyển sang missed call, giao diện gọi video toàn màn hình.
+- **Bước 7: Gọi video ngẫu nhiên kiểu Omegle / Azar**: Hàng đợi ghép cặp Redis atomic bằng Lua script, bộ lọc giới tính / độ tuổi, giới hạn 200 lượt next/giờ, tính năng vote kết bạn `POST /api/v1/calls/:id/friend-vote` (hai bên cùng vote tạo match tự động), cơ chế chống lặp cặp trong 10 phút, màn hình gọi ngẫu nhiên với nút Next và Báo cáo.
