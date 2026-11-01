@@ -1,0 +1,111 @@
+name: Production CI/CD & Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test_and_build:
+    name: Test & Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: meetcall
+          POSTGRES_PASSWORD: meetcall_dev_password
+          POSTGRES_DB: meetcall_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client & Run Migrations
+        env:
+          DATABASE_URL: postgresql://meetcall:meetcall_dev_password@localhost:5432/meetcall_test?schema=public
+        run: |
+          pnpm --filter @meetcall/api prisma generate
+          pnpm --filter @meetcall/api prisma migrate deploy
+
+      - name: Typecheck & Lint
+        run: |
+          pnpm build
+          pnpm lint
+
+      - name: Run Backend E2E Tests
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://meetcall:meetcall_dev_password@localhost:5432/meetcall_test?schema=public
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: meetcall_super_secret_jwt_key_32_chars_dev_only
+        run: pnpm --filter @meetcall/api test:e2e
+
+  deploy:
+    name: Deploy to Production VPS
+    needs: test_and_build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        if: env.SSH_HOST != ''
+        env:
+          SSH_HOST: ${{ secrets.PROD_HOST }}
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /opt/meetcall
+            git pull origin main
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker compose -f docker-compose.prod.yml exec -T api pnpm prisma migrate deploy

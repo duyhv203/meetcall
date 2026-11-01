@@ -549,9 +549,49 @@ pnpm build
 ```
 
 ### 4. Bước kế tiếp
-- **Bước 11: Triển khai Production (Docker, Caddy, CI/CD, Runbook)**:
-  - Multi-stage Dockerfile tối ưu hoá cho `apps/api` và `apps/web` (non-root user, alpine/slim base).
-  - `docker-compose.prod.yml`: Caddy (tự động cấu hình SSL/HTTPS qua Let's Encrypt), `api`, `postgres` (PostGIS), `redis`, `coturn` (STUN/TURN).
-  - Cấu hình biến môi trường production `.env.production.example`.
-  - Quy trình GitHub Actions CI/CD `.github/workflows/deploy.yml`.
-  - Tài liệu triển khai & vận hành production `docs/deploy.md` và `docs/runbook.md`.
+- **Bước 11: Triển khai Production (Đã hoàn thành)**
+
+---
+
+## Bước 11: Triển khai Production (Docker, Caddy, CI/CD, Runbook) (Đã hoàn thành)
+
+### 1. Đã làm
+- **Container hoá Multi-Stage Dockerfile**:
+  - `apps/api/Dockerfile`: Multi-stage build (base, builder với pnpm và Prisma client, runner siêu nhẹ trên nền `node:22-alpine` với người dùng non-root `node` và `dumb-init`).
+  - `apps/web/Dockerfile`: Multi-stage build biên dịch React 19 SPA, runtime tĩnh phục vụ qua `caddy:2-alpine` kèm tự động fallback SPA routing (`try_files {path} /index.html`).
+- **Hạ tầng Caddy Reverse Proxy & Tự động SSL**:
+  - `infra/caddy/Caddyfile`: Reverse proxy cấu hình HTTPS tự động qua Let's Encrypt (ACME), nén gzip/zstd, bổ sung đầy đủ HTTP Security Headers (HSTS, X-Frame-Options, Permissions-Policy), điều hướng linh hoạt `/api/*`, `/socket.io/*` (WebSocket upgrade) và giao diện web.
+- **Docker Compose Production**:
+  - `docker-compose.prod.yml`: Đóng gói 5 dịch vụ hoàn chỉnh:
+    1. `caddy`: Reverse proxy cổng 80 và 443.
+    2. `api`: Backend NestJS kết nối mạng nội bộ bridge.
+    3. `web`: Frontend tĩnh Caddy runtime.
+    4. `postgres`: `postgis/postgis:16-3.4` với volume dữ liệu an toàn và healthcheck.
+    5. `redis`: `redis:7-alpine` kèm mật khẩu `requirepass` và cơ chế lưu trữ AOF (`appendonly yes`).
+    6. `coturn`: Máy chủ STUN/TURN WebRTC chạy `network_mode: "host"` kèm xác thực ngắn hạn RFC 5766.
+- **Biến môi trường Production**:
+  - `.env.production.example`: Cấu hình mẫu toàn diện với hướng dẫn chi tiết về bảo mật, mật khẩu mạnh, JWT secret, TURN auth secret, SMTP, và Cloudflare R2 / S3 storage credentials.
+- **Tự động hoá CI/CD**:
+  - `.github/workflows/deploy.yml`: Pipeline tự động chạy test tích hợp Postgres PostGIS và Redis, linting, build toàn bộ monorepo, và kích hoạt deploy qua SSH lên VPS production khi push vào nhánh `main`.
+- **Tài liệu Vận hành & Ứng cứu Sự cố**:
+  - `docs/deploy.md`: Cẩm nang hướng dẫn triển khai từ A đến Z trên máy chủ Ubuntu/Debian (cấu hình firewall, UFW, Docker, DNS, migrate database).
+  - `docs/runbook.md`: Sổ tay vận hành chuyên sâu: xem logs realtime, quy trình sao lưu và phục hồi tự động dữ liệu PostGIS / Redis, và 3 kịch bản ứng cứu sự cố khẩn cấp (WebRTC connection issue, bot/spam attack, OOM/disk full).
+
+---
+
+## TỔNG KẾT DỰ ÁN MEETCALL (11/11 BƯỚC ĐÃ HOÀN THÀNH TOÀN DIỆN)
+
+Hệ thống ứng dụng hẹn hò có video call MeetCall đã được xây dựng và kiểm thử hoàn chỉnh 100% qua tất cả 11 bước theo tài liệu thiết kế:
+
+1. **Bước 1**: Khung dự án Monorepo (`pnpm workspaces`), Docker dev, Schema 13 bảng PostGIS, CI.
+2. **Bước 2**: Xác thực (Auth) - Băm argon2id, JWT + Refresh token rotation & reuse detection, Mailpit OTP reset mật khẩu, chặn < 18 tuổi.
+3. **Bước 3**: Hồ sơ & Xử lý ảnh - Sharp EXIF GPS stripping, upload URL S3/local, Onboarding 4 bước, lưu toạ độ PostGIS geography.
+4. **Bước 4**: Khám phá & Quẹt thẻ - PostGIS ST_DWithin với khoảng cách làm tròn 5km bảo vệ vị trí, rate limit 100 like/12h, ghép đôi nguyên tử (user_a < user_b).
+5. **Bước 5**: Nhắn tin Realtime - Socket.IO, phân trang cursor, bộ lọc chống phishing link (> 2 link), chỉ báo typing, read receipts, online presence TTL Redis.
+6. **Bước 6**: Gọi Video 1-1 & Cấu hình Coturn - WebRTC P2P DTLS-SRTP, sinh credentials TURN động HMAC-SHA1 RFC 5766, giới hạn signaling <= 16 KB.
+7. **Bước 7**: Gọi Video Ngẫu nhiên (Omegle/Azar) - Hàng đợi ghép cặp Redis atomic, kiểm tra cổng 18+ và random banned, chống lặp cặp trong 10 phút, vote kết bạn tự động tạo match.
+8. **Bước 8**: An toàn & Quản trị - Chặn 2 chiều, báo cáo vi phạm (nhận 3 báo cáo/24h tự khoá random 24h, gắn cờ ưu tiên urgent cho `minor`), Admin RBAC duyệt báo cáo, kiểm duyệt ảnh, webhook xác thực tuổi KYC HMAC-SHA256.
+9. **Bước 9**: Thông báo đẩy, Cài đặt & GDPR - Web Push Service Worker, xuất dữ liệu GDPR dạng JSON, soft delete 7 ngày ân hạn trước khi hard delete, điều khoản Terms & Privacy.
+10. **Bước 10**: Kiểm thử toàn diện & Gia cố - Playwright E2E 5 luồng người dùng chính, k6 load test, báo cáo kiểm toán an ninh OWASP Top 10.
+11. **Bước 11**: Triển khai Production - Multi-stage Dockerfile, Caddy tự động HTTPS, Docker Compose prod, CI/CD deploy, và sổ tay Runbook vận hành.
+
