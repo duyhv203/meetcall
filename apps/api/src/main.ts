@@ -14,8 +14,12 @@ async function bootstrap(): Promise<void> {
   const logger = app.get(Logger);
   app.useLogger(logger);
 
-  // Security Headers via Helmet
-  app.use(helmet());
+  // Security Headers via Helmet (allow cross-origin for static uploaded images)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   // Cookie Parser
   const parseCookie =

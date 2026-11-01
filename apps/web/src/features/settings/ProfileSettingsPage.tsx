@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useProfileStore } from '../../stores/profileStore.js';
+import { resolvePhotoUrl } from '../../lib/api.js';
 
 const POPULAR_INTERESTS = [
   'Du lịch',
@@ -248,7 +249,7 @@ export function ProfileSettingsPage() {
                 className="relative aspect-square rounded-2xl overflow-hidden border border-slate-800 group bg-slate-950"
               >
                 <img
-                  src={photo.url}
+                  src={resolvePhotoUrl(photo.url)}
                   alt={`Photo ${idx + 1}`}
                   className="w-full h-full object-cover"
                 />
@@ -498,7 +499,7 @@ export function ProfileSettingsPage() {
             <div className="relative aspect-[3/4] bg-slate-950">
               {me?.photos?.[0]?.url ? (
                 <img
-                  src={me.photos[0].url}
+                  src={resolvePhotoUrl(me.photos[0].url)}
                   alt={displayName}
                   className="w-full h-full object-cover"
                 />

@@ -13,7 +13,7 @@ import {
 import type { HealthResponse } from '@meetcall/shared';
 import { useAuthStore } from '../../stores/authStore.js';
 import { useProfileStore } from '../../stores/profileStore.js';
-import { api } from '../../lib/api.js';
+import { api, resolvePhotoUrl } from '../../lib/api.js';
 
 export function HomePage() {
   const { user, logout } = useAuthStore();
@@ -40,8 +40,7 @@ export function HomePage() {
   const [avatarError, setAvatarError] = useState(false);
   const [bannerAvatarError, setBannerAvatarError] = useState(false);
 
-  const rawPhoto = me?.photos?.[0]?.url;
-  const mainPhoto = rawPhoto ? rawPhoto.replace(/^http:\/\/localhost:3000/, '') : null;
+  const mainPhoto = resolvePhotoUrl(me?.photos?.[0]?.url) || null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">

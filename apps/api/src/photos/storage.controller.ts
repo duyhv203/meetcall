@@ -68,6 +68,8 @@ export class StorageController {
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'public, max-age=31536000');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
       res.send(buffer);
     } catch {
       res.status(HttpStatus.NOT_FOUND).json({

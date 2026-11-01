@@ -8,7 +8,7 @@ import type {
   UpdatePreferencesRequest,
   UpdateProfileRequest,
 } from '@meetcall/shared';
-import { api } from '../lib/api.js';
+import { api, resolvePhotoUrl } from '../lib/api.js';
 
 interface ProfileState {
   me: MeResponse | null;
@@ -36,6 +36,12 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const data = await api<MeResponse>('/me');
+      if (data && data.photos) {
+        data.photos = data.photos.map((p) => ({
+          ...p,
+          url: resolvePhotoUrl(p.url),
+        }));
+      }
       set({ me: data, isLoading: false });
       return data;
     } catch (err) {

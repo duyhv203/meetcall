@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useDiscoverStore } from '../../stores/discoverStore.js';
 import { connectSocket } from '../../lib/socket.js';
-import { api } from '../../lib/api.js';
+import { api, resolvePhotoUrl } from '../../lib/api.js';
 import type { SwipeResponse } from '@meetcall/shared';
 
 interface QuotaData {
@@ -302,7 +302,7 @@ export function DiscoverPage() {
               {/* Photo */}
               {currentPhoto?.url ? (
                 <img
-                  src={currentPhoto.url}
+                  src={resolvePhotoUrl(currentPhoto.url)}
                   alt={currentCandidate.displayName}
                   className="w-full h-full object-cover"
                 />

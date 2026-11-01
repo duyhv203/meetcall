@@ -14,6 +14,7 @@ import {
   Star,
 } from 'lucide-react';
 import { useProfileStore } from '../../stores/profileStore.js';
+import { resolvePhotoUrl } from '../../lib/api.js';
 
 const POPULAR_INTERESTS = [
   'Du lịch',
@@ -487,7 +488,7 @@ export function OnboardingPage() {
                   className="relative aspect-square rounded-2xl overflow-hidden border border-slate-800 group bg-slate-950"
                 >
                   <img
-                    src={photo.url}
+                    src={resolvePhotoUrl(photo.url)}
                     alt={`Photo ${idx + 1}`}
                     className="w-full h-full object-cover"
                   />

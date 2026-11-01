@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useMatchStore } from '../../stores/matchStore.js';
+import { resolvePhotoUrl } from '../../lib/api.js';
 import type { MatchItem } from '@meetcall/shared';
 
 export function MatchesPage() {
@@ -101,7 +102,7 @@ export function MatchesPage() {
                 <div className="relative w-20 h-20 rounded-2xl overflow-hidden bg-slate-950 flex-shrink-0 border border-slate-800">
                   {item.partner.avatar ? (
                     <img
-                      src={item.partner.avatar}
+                      src={resolvePhotoUrl(item.partner.avatar)}
                       alt={item.partner.displayName}
                       className="w-full h-full object-cover"
                     />

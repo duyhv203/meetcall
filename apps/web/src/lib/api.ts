@@ -131,3 +131,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   return response.json() as Promise<T>;
 }
+
+export function resolvePhotoUrl(url?: string | null): string {
+  if (!url) return '';
+  if (url.startsWith('http://localhost:3000')) {
+    return url.replace('http://localhost:3000', '');
+  }
+  return url;
+}
+

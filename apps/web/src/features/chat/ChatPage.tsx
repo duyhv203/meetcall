@@ -12,6 +12,7 @@ import { useChatStore } from '../../stores/chatStore.js';
 import { useMatchStore } from '../../stores/matchStore.js';
 import { useAuthStore } from '../../stores/authStore.js';
 import { connectSocket } from '../../lib/socket.js';
+import { resolvePhotoUrl } from '../../lib/api.js';
 import type { ChatMessage } from '@meetcall/shared';
 
 export function ChatPage() {
@@ -169,7 +170,7 @@ export function ChatPage() {
               <div className="relative">
                 {partner.avatar ? (
                   <img
-                    src={partner.avatar}
+                    src={resolvePhotoUrl(partner.avatar)}
                     alt={partner.displayName}
                     className="w-10 h-10 rounded-full object-cover border border-slate-700"
                   />

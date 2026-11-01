@@ -24,6 +24,7 @@ import type {
   AdminUserItem,
 } from '@meetcall/shared';
 import { useAuthStore } from '../../stores/authStore.js';
+import { resolvePhotoUrl } from '../../lib/api.js';
 
 interface AdminPhoto {
   id: string;
@@ -711,7 +712,7 @@ export const AdminDashboardPage = () => {
                             <div className="flex items-center gap-3">
                               {u.profile?.avatarUrl ? (
                                 <img
-                                  src={u.profile.avatarUrl}
+                                  src={resolvePhotoUrl(u.profile.avatarUrl)}
                                   alt={u.profile.displayName}
                                   className="w-9 h-9 rounded-full object-cover border border-slate-700"
                                 />
@@ -1083,7 +1084,7 @@ export const AdminDashboardPage = () => {
                       onClick={() => setSelectedPhotoPreview(p.url)}
                     >
                       <img
-                        src={p.url}
+                        src={resolvePhotoUrl(p.url)}
                         alt="Photo candidate"
                         className="w-full h-full object-cover transition group-hover:scale-105"
                       />
@@ -1283,7 +1284,7 @@ export const AdminDashboardPage = () => {
                       key={ph.id}
                       className="relative rounded-xl overflow-hidden aspect-square border border-slate-800 bg-slate-950"
                     >
-                      <img src={ph.url} alt="User upload" className="w-full h-full object-cover" />
+                      <img src={resolvePhotoUrl(ph.url)} alt="User upload" className="w-full h-full object-cover" />
                       <span
                         className={`absolute bottom-1 right-1 px-1.5 py-0.5 text-[9px] rounded font-bold uppercase ${
                           ph.moderationStatus === 'approved'
@@ -1333,7 +1334,7 @@ export const AdminDashboardPage = () => {
         >
           <div className="max-w-3xl max-h-[90vh] relative">
             <img
-              src={selectedPhotoPreview}
+              src={resolvePhotoUrl(selectedPhotoPreview)}
               alt="Preview"
               className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl"
             />
