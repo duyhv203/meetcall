@@ -59,13 +59,6 @@ export class RandomService {
       });
     }
 
-    if (user.role === 'admin') {
-      throw new ForbiddenException({
-        code: 'ADMIN_NOT_ALLOWED',
-        message: 'Tài khoản Quản trị viên chỉ dùng để quản trị hệ thống, không tham gia gọi hẹn hò.',
-      });
-    }
-
     if (!user.ageVerified) {
       throw new ForbiddenException({
         code: 'AGE_NOT_VERIFIED',
@@ -80,22 +73,22 @@ export class RandomService {
       });
     }
 
-    if (!user.profile || user.photos.length === 0) {
+    if (!user.profile) {
       throw new ForbiddenException({
         code: 'ONBOARDING_INCOMPLETE',
-        message: 'Vui lòng hoàn tất hồ sơ và tải ảnh đại diện trước khi tham gia.',
+        message: 'Vui lòng hoàn tất thông tin hồ sơ trước khi tham gia.',
       });
     }
 
     const birthdate = user.profile.birthdate;
-    const age = Math.floor(
-      (Date.now() - birthdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000),
-    );
+    const age = birthdate
+      ? Math.floor((Date.now() - birthdate.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+      : 20;
 
     return {
       userId: user.id,
-      displayName: user.profile.displayName,
-      gender: user.profile.gender,
+      displayName: user.profile.displayName || 'Người dùng MeetCall',
+      gender: user.profile.gender || 'other',
       age,
     };
   }

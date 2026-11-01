@@ -93,7 +93,9 @@ export class PhotoProcessorService implements OnModuleInit, OnModuleDestroy {
       await this.queue.add('process', data);
     } else {
       setImmediate(() => {
-        void this.processPhotoJob(data);
+        this.processPhotoJob(data).catch((err) => {
+          this.logger.error(`Direct photo processing error: ${err.message}`);
+        });
       });
     }
   }
@@ -140,11 +142,17 @@ export class PhotoProcessorService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (error) {
       this.logger.error(`Failed to process photo ${photoId}:`, error);
-      await this.prisma.photo.update({
-        where: { id: photoId },
-        data: { moderationStatus: 'rejected' },
-      });
-      throw error;
+      try {
+        await this.prisma.photo.update({
+          where: { id: photoId },
+          data: { moderationStatus: 'rejected' },
+        });
+      } catch (dbErr) {
+        this.logger.error(`Failed to update photo rejected status:`, dbErr);
+      }
+      if (this.isAsyncQueueEnabled) {
+        throw error;
+      }
     }
   }
 

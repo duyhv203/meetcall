@@ -244,7 +244,23 @@ export function RandomPage() {
             </div>
           </div>
         ) : (
-          <div className="text-slate-500 text-sm">Chưa bắt đầu kết nối</div>
+          <div className="flex flex-col items-center gap-4 text-center p-6 max-w-sm">
+            {error ? (
+              <div className="p-4 bg-red-950/70 border border-red-700/60 rounded-2xl text-red-200 text-sm space-y-2">
+                <p className="font-semibold text-red-300">Thông báo</p>
+                <p className="text-xs leading-relaxed">{error}</p>
+              </div>
+            ) : (
+              <div className="text-slate-400 text-sm">Chưa bắt đầu kết nối</div>
+            )}
+            <button
+              type="button"
+              onClick={() => void startRandomCall(getActiveFilterOptions())}
+              className="px-6 py-3 rounded-full bg-gradient-to-r from-rose-500 to-purple-600 hover:from-rose-600 hover:to-purple-700 text-white font-bold text-xs shadow-lg transition"
+            >
+              Bắt đầu ghép đôi
+            </button>
+          </div>
         )}
       </div>
 

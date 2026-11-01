@@ -272,7 +272,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   isUserOnline(userId: string): boolean {
-    if (!this.server?.sockets?.adapter?.rooms) return false;
+    if (!this.server?.sockets?.adapter?.rooms) return true;
     const room = this.server.sockets.adapter.rooms.get(`user:${userId}`);
     return Boolean(room && room.size > 0);
   }
